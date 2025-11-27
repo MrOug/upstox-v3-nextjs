@@ -128,19 +128,49 @@ export function UpstoxConsole() {
       setProgress(((i + 1) / stocks.length) * 100);
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       try {
-        const instrumentKey = INSTRUMENTS[exchange as keyof typeof INSTRUMENTS]?.[symbol];
-        if (!instrumentKey) { log(`✗ ${symbol}: Not found`); continue; }
-        const data = await upstoxApi.getHistoricalData(instrumentKey, unit, intervalNum, toDate, fromDate);
-        if (data.data?.candles?.length) {
-          const candles = data.data.candles;
-          const latest = candles[0][4], oldest = candles[candles.length - 1][4];
-          const high = Math.max(...candles.map((c: any) => c[2])), low = Math.min(...candles.map((c: any) => c[3]));
-          const change = latest - oldest, pct = ((change / oldest) * 100).toFixed(2);
-          let monthly: any[] = [];
-          if (interval === 'months/1') monthly = candles.map((c: any) => ({ date: new Date(c[0]).toLocaleDateString('en-IN', { year: 'numeric', month: 'short' }), open: c[1].toFixed(2), close: c[4].toFixed(2), high: c[2].toFixed(2), low: c[3].toFixed(2), change: ((c[4] - c[1]) / c[1] * 100).toFixed(2) })).reverse();
-          results.push({ symbol, companyName: COMPANY_FULL_NAMES[symbol] || symbol, incorporationDate: INCORPORATION_DATES[symbol] || 'N/A', latestPrice: latest.toFixed(2), oldestPrice: oldest.toFixed(2), highPrice: high.toFixed(2), lowPrice: low.toFixed(2), change: change.toFixed(2), percentChange: pct, dataPoints: candles.length, monthlyData: monthly });
-          log(`✓ ${symbol}: ${pct}%`);
-        }
+     const fetchStockData = async () => {
+  if (!upstoxApi.getAccessToken()) { setAuthStatus('❌ Please authenticate'); return; }
+  const stocks = await getStockList();
+  if (!stocks.length) { setAuthStatus('❌ Enter symbols'); return; }
+  const [unit, intervalNum] = interval.split('/');
+  let fromDate = timePeriod === 'max' ? (unit.includes('minute') || unit.includes('hour') ? '2022-01-01' : '2008-01-01') : new Date(Date.now() - parseInt(timePeriod) * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const toDate = new Date().toISOString().split('T')[0];
+  log(`Fetching ${stocks.length} stocks...`);
+  setShowProgress(true);
+  const results: StockResult[] = [];
+  
+  for (let i = 0; i < stocks.length; i++) {
+    const symbol = stocks[i];
+    setProgress(((i + 1) / stocks.length) * 100);
+    setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
+    
+    try {
+      // FIXED: Properly typed instrument lookup
+      const exchangeInstruments = INSTRUMENTS[exchange as keyof typeof INSTRUMENTS];
+      const instrumentKey = exchangeInstruments?.[symbol as keyof typeof exchangeInstruments];
+      
+      if (!instrumentKey) { log(`✗ ${symbol}: Not found`); continue; }
+      
+      const data = await upstoxApi.getHistoricalData(instrumentKey, unit, intervalNum, toDate, fromDate);
+      
+      if (data.data?.candles?.length) {
+        const candles = data.data.candles;
+        const latest = candles[0][4], oldest = candles[candles.length - 1][4];
+        const high = Math.max(...candles.map((c: any) => c[2])), low = Math.min(...candles.map((c: any) => c[3]));
+        const change = latest - oldest, pct = ((change / oldest) * 100).toFixed(2);
+        let monthly: any[] = [];
+        if (interval === 'months/1') monthly = candles.map((c: any) => ({ date: new Date(c[0]).toLocaleDateString('en-IN', { year: 'numeric', month: 'short' }), open: c[1].toFixed(2), close: c[4].toFixed(2), high: c[2].toFixed(2), low: c[3].toFixed(2), change: ((c[4] - c[1]) / c[1] * 100).toFixed(2) })).reverse();
+        results.push({ symbol, companyName: COMPANY_FULL_NAMES[symbol] || symbol, incorporationDate: INCORPORATION_DATES[symbol] || 'N/A', latestPrice: latest.toFixed(2), oldestPrice: oldest.toFixed(2), highPrice: high.toFixed(2), lowPrice: low.toFixed(2), change: change.toFixed(2), percentChange: pct, dataPoints: candles.length, monthlyData: monthly });
+        log(`✓ ${symbol}: ${pct}%`);
+      }
+    } catch (error: any) { log(`✗ ${symbol}: ${error.message}`); }
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  setShowProgress(false); setProgressText(''); setStockResults(results); setShowExport(true);
+  log(`✓ Done: ${results.length} analyzed`);
+};
+
       } catch (error: any) { log(`✗ ${symbol}: ${error.message}`); }
       await new Promise(r => setTimeout(r, 300));
     }
