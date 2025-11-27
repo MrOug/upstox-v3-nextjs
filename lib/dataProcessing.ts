@@ -1,13 +1,19 @@
 export function parseCSVLine(text: string): string[] {
   const matches: string[] = [];
-  const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|(^,'"\s\\]*(?:\s+[^,'"\s\\]+)*)\s*(?:,|$)/g;
+  // Fixed regex pattern - removed problematic character class
+  const re = /(?!\s*$)\s*(?:'([^']*)'|"([^"]*)"|([^,\s][^,]*[^,\s]|[^,\s]))\s*(?:,|$)/g;
   let match;
   
   while ((match = re.exec(text)) !== null) {
-    if (match[2] !== undefined) matches.push(match[2]);
-    else if (match[1] !== undefined) matches.push(match[1]);
-    else if (match[3] !== undefined) matches.push(match[3]);
-    else matches.push('');
+    if (match[1] !== undefined) {
+      matches.push(match[1]); // Single-quoted value
+    } else if (match[2] !== undefined) {
+      matches.push(match[2]); // Double-quoted value
+    } else if (match[3] !== undefined) {
+      matches.push(match[3]); // Unquoted value
+    } else {
+      matches.push('');
+    }
   }
   
   return matches;
@@ -46,14 +52,20 @@ export function parseStockCSV(csvContent: string) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    if (line.startsWith('Company Name') || line.startsWith('Monthly Breakdown') || line.startsWith('Date,Open,Close')) {
+    // Skip headers
+    if (line.startsWith('Company Name') || 
+        line.startsWith('Monthly Breakdown') || 
+        line.startsWith('Date,Open,Close')) {
       continue;
     }
     
     const parts = line.split(',');
     
-    if (parts.length >= 2 && (parts[1].includes('/') || parts[1].includes('-')) && 
+    // Check if this is a company header line (has incorporation date)
+    if (parts.length >= 2 && 
+        (parts[1].includes('/') || parts[1].includes('-')) && 
         (parts[1].split('/').length === 3 || parts[1].split('-').length === 3)) {
+      // Save previous stock if exists
       if (currentStock && monthlyData.length > 0) {
         stocks.push({
           stock: currentStock,
@@ -61,10 +73,13 @@ export function parseStockCSV(csvContent: string) {
           monthlyData: [...monthlyData]
         });
       }
+      // Start new stock
       currentStock = parts[0].trim();
       currentIncDate = parts[1].trim();
       monthlyData = [];
-    } else if (parts.length >= 5 && monthNames.some(m => parts[0].startsWith(m))) {
+    } 
+    // Check if this is a monthly data line
+    else if (parts.length >= 5 && monthNames.some(m => parts[0].startsWith(m))) {
       monthlyData.push({
         date: parts[0].trim(),
         open: parts[1].trim() || '',
@@ -76,6 +91,7 @@ export function parseStockCSV(csvContent: string) {
     }
   }
   
+  // Don't forget the last stock
   if (currentStock && monthlyData.length > 0) {
     stocks.push({
       stock: currentStock,
