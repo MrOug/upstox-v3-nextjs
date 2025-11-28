@@ -2,6 +2,7 @@ import axios from 'axios';
 
 export class UpstoxAPI {
   private accessToken: string | null = null;
+  private instrumentCache: Record<string, Record<string, string>> = {};
 
   setAccessToken(token: string) {
     this.accessToken = token;
@@ -12,40 +13,32 @@ export class UpstoxAPI {
   }
 
   /**
-   * Search for instrument key using V3 search API
-   * Returns instrument_key for the symbol
+   * Load instrument master via Next.js API route (server-side, no CORS)
    */
-  async searchInstrumentKey(symbol: string, exchange: string = 'NSE_EQ'): Promise<string | null> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
+  async loadInstruments(exchange: string = 'NSE'): Promise<Record<string, string>> {
+    // Check cache first
+    if (this.instrumentCache[exchange]) {
+      console.log(`Using cached instruments for ${exchange}`);
+      return this.instrumentCache[exchange];
     }
 
     try {
-      const url = `https://api.upstox.com/v2/market-quote/quotes?symbol=${exchange}%7C${symbol}`;
+      console.log(`Loading ${exchange} instruments via API route...`);
+      const response = await axios.get(`/api/instruments?exchange=${exchange}`);
       
-      const response = await axios.get(url, {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      // Extract instrument key from response
-      const data = response.data?.data;
-      if (data && Object.keys(data).length > 0) {
-        const firstKey = Object.keys(data)[0];
-        return firstKey; // This is the instrument_key
-      }
-
-      return null;
-    } catch (error) {
-      console.error(`Search failed for ${symbol}:`, error);
-      return null;
+      // Cache the results
+      this.instrumentCache[exchange] = response.data;
+      
+      console.log(`✓ Loaded ${Object.keys(response.data).length} instruments`);
+      return response.data;
+    } catch (error: any) {
+      console.error(`Failed to load instruments: ${error.message}`);
+      return {};
     }
   }
 
   /**
-   * Fetch historical candle data using V3 API format
+   * Fetch historical candle data using V3 API
    */
   async getHistoricalData(
     instrumentKey: string,
@@ -70,6 +63,9 @@ export class UpstoxAPI {
     return response.data;
   }
 
+  /**
+   * Search using V2 API (V3 doesn't have search)
+   */
   async searchStock(query: string) {
     if (!this.accessToken) {
       throw new Error('No access token available');
