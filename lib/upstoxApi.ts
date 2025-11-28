@@ -13,7 +13,7 @@ export class UpstoxAPI {
   }
 
   /**
-   * Load instrument master via Next.js API route (server-side, no CORS)
+   * Load instrument master from Upstox assets (direct download)
    */
   async loadInstruments(exchange: string = 'NSE'): Promise<Record<string, string>> {
     // Check cache first
@@ -23,72 +23,70 @@ export class UpstoxAPI {
     }
 
     try {
-      console.log(`📥 Loading ${exchange} instruments via API route...`);
-      const response = await axios.get(`/api/instruments?exchange=${exchange}`);
+      console.log(`📥 Loading ${exchange} instruments...`);
       
-      // Extract map from response
-      const data = response.data.map || response.data;
+      // Upstox instrument master URL
+      const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange.toLowerCase()}.json.gz`;
       
-      // Cache the results
-      this.instrumentCache[exchange] = data;
+      const response = await axios.get(url, {
+        responseType: 'json',
+        headers: {
+          'Accept-Encoding': 'gzip, deflate',
+          'Accept': 'application/json'
+        }
+      });
       
-      console.log(`✓ Loaded ${Object.keys(data).length} instrument mappings`);
+      const instruments = response.data;
+      const instrumentMap: Record<string, string> = {};
       
-      // Log metadata if available
-      if (response.data.metadata) {
-        console.log('Metadata:', response.data.metadata);
+      // Build symbol to instrument_key mapping
+      if (Array.isArray(instruments)) {
+        instruments.forEach((item: any) => {
+          if (item.trading_symbol && item.instrument_key) {
+            instrumentMap[item.trading_symbol] = item.instrument_key;
+          }
+        });
       }
       
-      return data;
+      // Cache the results
+      this.instrumentCache[exchange] = instrumentMap;
+      
+      console.log(`✓ Loaded ${Object.keys(instrumentMap).length} instrument mappings for ${exchange}`);
+      
+      return instrumentMap;
     } catch (error: any) {
       console.error(`❌ Failed to load instruments: ${error.message}`);
+      
+      // Fallback: try via CORS proxy or return empty
+      console.log(`💡 Tip: Download instruments from: https://assets.upstox.com/market-quote/instruments/exchange/${exchange.toLowerCase()}.json.gz`);
       return {};
     }
   }
 
   /**
-   * Search for instrument using V2 API (fallback for missing symbols)
+   * Search for instrument key from loaded instruments (no API call)
    */
   async searchSymbol(symbol: string, exchange: string = 'NSE'): Promise<string | null> {
-    if (!this.accessToken) {
-      return null;
-    }
-
     try {
-      const url = `https://api.upstox.com/v2/search?query=${encodeURIComponent(symbol)}`;
+      // Load instruments if not cached
+      const instruments = await this.loadInstruments(exchange);
       
-      const response = await axios.get(url, {
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`,
-          'Accept': 'application/json'
-        }
-      });
-
-      const results = response.data;
+      // Direct lookup
+      if (instruments[symbol]) {
+        console.log(`✓ Found ${symbol}:`, instruments[symbol]);
+        return instruments[symbol];
+      }
       
-      if (results && Array.isArray(results) && results.length > 0) {
-        // Find exact match for the exchange
-        const exactMatch = results.find((item: any) => 
-          item.trading_symbol === symbol && 
-          item.instrument_key?.startsWith(exchange)
-        );
-        
-        if (exactMatch) {
-          console.log(`✓ Found ${symbol} via API search:`, exactMatch.instrument_key);
-          return exactMatch.instrument_key;
-        }
-        
-        // Try first result from the exchange
-        const firstMatch = results.find((item: any) => 
-          item.instrument_key?.startsWith(exchange)
-        );
-        
-        if (firstMatch) {
-          console.log(`✓ Found similar to ${symbol}:`, firstMatch.instrument_key);
-          return firstMatch.instrument_key;
+      // Case-insensitive search
+      const upperSymbol = symbol.toUpperCase();
+      for (const [key, value] of Object.entries(instruments)) {
+        if (key.toUpperCase() === upperSymbol) {
+          console.log(`✓ Found ${symbol} (case-insensitive):`, value);
+          return value;
         }
       }
       
+      console.log(`✗ ${symbol}: Not found in ${exchange}`);
       return null;
     } catch (error: any) {
       console.error(`Search failed for ${symbol}:`, error.message);
@@ -123,14 +121,34 @@ export class UpstoxAPI {
   }
 
   /**
-   * Search using V2 API
+   * Get market quote for instrument keys using V3 API
    */
-  async searchStock(query: string) {
+  async getMarketQuote(instrumentKeys: string[]) {
     if (!this.accessToken) {
       throw new Error('No access token available');
     }
 
-    const url = `https://api.upstox.com/v2/search?query=${encodeURIComponent(query)}`;
+    const url = `https://api.upstox.com/v3/market-quote/quotes?instrument_key=${instrumentKeys.join(',')}`;
+    
+    const response = await axios.get(url, {
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Accept': 'application/json'
+      }
+    });
+    
+    return response.data;
+  }
+
+  /**
+   * Get LTP (Last Traded Price) using V3 API
+   */
+  async getLTP(instrumentKeys: string[]) {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
+    }
+
+    const url = `https://api.upstox.com/v3/market-quote/ltp?instrument_key=${instrumentKeys.join(',')}`;
     
     const response = await axios.get(url, {
       headers: {
