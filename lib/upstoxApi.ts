@@ -1,10 +1,7 @@
 import axios from 'axios';
-import pako from 'pako';
 
 export class UpstoxAPI {
   private accessToken: string | null = null;
-  private dynamicInstruments: Record<string, string> | null = null;
-  private isLoadingInstruments = false;
 
   setAccessToken(token: string) {
     this.accessToken = token;
@@ -14,56 +11,41 @@ export class UpstoxAPI {
     return this.accessToken;
   }
 
-  async loadCompleteInstrumentMaster(exchange: string = 'NSE'): Promise<Record<string, string>> {
-    if (this.dynamicInstruments) return this.dynamicInstruments;
-    
-    if (this.isLoadingInstruments) {
-      while (this.isLoadingInstruments) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      return this.dynamicInstruments || {};
+  /**
+   * Search for instrument key using V3 search API
+   * Returns instrument_key for the symbol
+   */
+  async searchInstrumentKey(symbol: string, exchange: string = 'NSE_EQ'): Promise<string | null> {
+    if (!this.accessToken) {
+      throw new Error('No access token available');
     }
 
-    this.isLoadingInstruments = true;
-    
     try {
-      console.log(`📥 Downloading ${exchange} instrument master from Upstox CDN...`);
+      const url = `https://api.upstox.com/v2/market-quote/quotes?symbol=${exchange}%7C${symbol}`;
       
-      const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange}.json.gz`;
-      const response = await axios.get(url, { responseType: 'arraybuffer' });
-      
-      // Decompress gzip data
-      const decompressed = pako.ungzip(response.data, { to: 'string' });
-      const instruments = JSON.parse(decompressed);
-      
-      // Build symbol-to-instrumentKey map
-      const map: Record<string, string> = {};
-      for (const instrument of instruments) {
-        if (instrument.symbol && instrument.instrument_key) {
-          map[instrument.symbol] = instrument.instrument_key;
+      const response = await axios.get(url, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Accept': 'application/json'
         }
+      });
+
+      // Extract instrument key from response
+      const data = response.data?.data;
+      if (data && Object.keys(data).length > 0) {
+        const firstKey = Object.keys(data)[0];
+        return firstKey; // This is the instrument_key
       }
-      
-      this.dynamicInstruments = map;
-      console.log(`✓ Loaded ${Object.keys(map).length} ${exchange} instruments`);
-      this.isLoadingInstruments = false;
-      return this.dynamicInstruments;
-      
-    } catch (error: any) {
-      console.error(`⚠ Error loading instruments: ${error.message}. Using fallback.`);
-      this.isLoadingInstruments = false;
-      this.dynamicInstruments = {};
-      return this.dynamicInstruments;
+
+      return null;
+    } catch (error) {
+      console.error(`Search failed for ${symbol}:`, error);
+      return null;
     }
   }
 
   /**
    * Fetch historical candle data using V3 API format
-   * @param instrumentKey - e.g., "NSE_EQ|INE009A01021"
-   * @param unit - "days", "weeks", "months", "minutes", "hours"
-   * @param interval - "1", "5", "15", "30", "60", "4"
-   * @param toDate - "YYYY-MM-DD"
-   * @param fromDate - "YYYY-MM-DD"
    */
   async getHistoricalData(
     instrumentKey: string,
@@ -76,7 +58,6 @@ export class UpstoxAPI {
       throw new Error('No access token available');
     }
 
-    // V3 API format: /v3/historical-candle/{instrument}/{unit}/{interval}/{to}/{from}
     const url = `https://api.upstox.com/v3/historical-candle/${encodeURIComponent(instrumentKey)}/${unit}/${interval}/${toDate}/${fromDate}`;
     
     const response = await axios.get(url, {
