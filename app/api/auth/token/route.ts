@@ -1,63 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const exchange = searchParams.get('exchange') || 'NSE';
+
   try {
-    const body = await request.json();
-    const { code } = body;
-
-    if (!code) {
-      return NextResponse.json(
-        { error: 'Authorization code is required' },
-        { status: 400 }
-      );
+    console.log(`Downloading ${exchange} instruments from Upstox CDN...`);
+    
+    // Download from Upstox CDN server-side (no CORS issues)
+    const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange}.json`;
+    const response = await axios.get(url);
+    
+    // Build symbol-to-instrumentKey map
+    const instruments = response.data;
+    const map: Record<string, string> = {};
+    
+    for (const inst of instruments) {
+      if (inst.instrument_type === 'EQ' && inst.trading_symbol && inst.instrument_key) {
+        map[inst.trading_symbol] = inst.instrument_key;
+      }
     }
-
-    const apiKey = process.env.NEXT_PUBLIC_UPSTOX_API_KEY;
-    const apiSecret = process.env.UPSTOX_API_SECRET;
-    const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
-
-    if (!apiKey || !apiSecret || !redirectUri) {
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
-
-    // Exchange code for token with Upstox V2 OAuth endpoint
-    const tokenResponse = await fetch('https://api.upstox.com/v2/login/authorization/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: new URLSearchParams({
-        code,
-        client_id: apiKey,
-        client_secret: apiSecret,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code',
-      }),
-    });
-
-    const tokenData = await tokenResponse.json();
-
-    if (!tokenResponse.ok) {
-      return NextResponse.json(
-        { error: tokenData.message || 'Failed to get access token' },
-        { status: tokenResponse.status }
-      );
-    }
-
-    return NextResponse.json({
-      access_token: tokenData.access_token,
-      expires_in: tokenData.expires_in,
-    });
-
+    
+    console.log(`✓ Loaded ${Object.keys(map).length} ${exchange} equity instruments`);
+    
+    return NextResponse.json(map);
   } catch (error: any) {
-    console.error('Token exchange error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal server error' },
-      { status: 500 }
-    );
+    console.error(`Error loading instruments: ${error.message}`);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
