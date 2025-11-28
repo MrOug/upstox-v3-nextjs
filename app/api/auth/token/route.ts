@@ -1,94 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const exchange = searchParams.get('exchange') || 'NSE';
+
   try {
-    const body = await request.json();
-    const { code } = body;
-
-    if (!code) {
-      return NextResponse.json(
-        { error: 'Authorization code is required' },
-        { status: 400 }
-      );
-    }
-
-    const apiKey = process.env.NEXT_PUBLIC_UPSTOX_API_KEY;
-    const apiSecret = process.env.UPSTOX_API_SECRET;
-    const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
-
-    if (!apiKey || !apiSecret || !redirectUri) {
-      console.error('Missing environment variables:', {
-        apiKey: !!apiKey,
-        apiSecret: !!apiSecret,
-        redirectUri: !!redirectUri
-      });
-      return NextResponse.json(
-        { error: 'Server configuration error: Missing API credentials' },
-        { status: 500 }
-      );
-    }
-
-    console.log('Exchanging code for token...');
-    console.log('API Key:', apiKey.substring(0, 10) + '...');
-    console.log('Redirect URI:', redirectUri);
-    console.log('Code length:', code.length);
-
-    // Exchange code for access token
-    const tokenUrl = 'https://api.upstox.com/v2/login/authorization/token';
+    console.log(`📥 Downloading ${exchange} instruments from Upstox CDN...`);
     
-    const response = await axios.post(
-      tokenUrl,
-      {
-        code: code,
-        client_id: apiKey,
-        client_secret: apiSecret,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      },
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
-        }
-      }
-    );
-
-    console.log('Token response status:', response.status);
-    console.log('Token response data:', JSON.stringify(response.data).substring(0, 100));
-
-    if (response.data && response.data.access_token) {
-      return NextResponse.json({
-        access_token: response.data.access_token,
-        expires_in: response.data.expires_in || 86400
-      });
-    } else {
-      console.error('No access token in response:', response.data);
-      return NextResponse.json(
-        { error: 'Invalid response from Upstox API' },
-        { status: 500 }
-      );
-    }
-
-  } catch (error: any) {
-    console.error('Token exchange error:', error.message);
+    // Download from Upstox CDN server-side (no CORS issues)
+    const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange}.json`;
+    const response = await axios.get(url, { timeout: 30000 });
     
-    if (error.response) {
-      console.error('Error response status:', error.response.status);
-      console.error('Error response data:', error.response.data);
+    // Build comprehensive symbol map
+    const instruments = response.data;
+    const map: Record<string, string> = {};
+    const variations: Record<string, string[]> = {};
+    let totalCount = 0;
+    let equityCount = 0;
+    
+    for (const inst of instruments) {
+      totalCount++;
       
-      return NextResponse.json(
-        {
-          error: error.response.data?.error || 'Authentication failed',
-          message: error.response.data?.message || error.message,
-          details: error.response.data
-        },
-        { status: error.response.status }
-      );
+      // Only include equity instruments
+      if (inst.instrument_type === 'EQ' && inst.trading_symbol && inst.instrument_key) {
+        const symbol = inst.trading_symbol.trim().toUpperCase();
+        
+        // Primary mapping
+        map[symbol] = inst.instrument_key;
+        equityCount++;
+        
+        // Add variations without special characters
+        const cleanSymbol = symbol.replace(/[^A-Z0-9]/g, '');
+        if (cleanSymbol !== symbol) {
+          map[cleanSymbol] = inst.instrument_key;
+        }
+        
+        // Remove -EQ suffix if present
+        if (symbol.endsWith('-EQ')) {
+          const baseSymbol = symbol.replace('-EQ', '');
+          map[baseSymbol] = inst.instrument_key;
+        }
+        
+        // Track variations for logging
+        if (!variations[symbol]) {
+          variations[symbol] = [];
+        }
+        variations[symbol].push(inst.name || 'Unknown');
+      }
     }
-
+    
+    console.log(`✓ Processed ${totalCount} total instruments`);
+    console.log(`✓ Found ${equityCount} equity instruments`);
+    console.log(`✓ Created ${Object.keys(map).length} symbol mappings`);
+    
+    // Log sample symbols for verification
+    const sampleSymbols = Object.keys(map).slice(0, 10);
+    console.log('Sample symbols:', sampleSymbols.join(', '));
+    
+    return NextResponse.json({
+      map,
+      metadata: {
+        exchange,
+        totalInstruments: totalCount,
+        equityInstruments: equityCount,
+        mappings: Object.keys(map).length,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error: any) {
+    console.error(`❌ Error loading instruments: ${error.message}`);
     return NextResponse.json(
-      { error: 'Token exchange failed', message: error.message },
+      { 
+        error: error.message,
+        map: {}
+      }, 
       { status: 500 }
     );
   }
