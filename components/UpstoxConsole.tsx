@@ -72,30 +72,71 @@ export function UpstoxConsole() {
 
   const authenticateUpstox = () => {
     const apiKey = process.env.NEXT_PUBLIC_UPSTOX_API_KEY;
-    const redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
-    if (!apiKey || !redirectUri) { log('❌ API credentials not configured'); return; }
+    let redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
+    
+    // Auto-detect redirect URI if running in browser
+    if (typeof window !== 'undefined' && !redirectUri) {
+      redirectUri = `${window.location.origin}/callback`;
+    }
+    
+    if (!apiKey) { 
+      log('❌ API Key not configured'); 
+      alert('API Key missing. Please check your .env.local file or Vercel environment variables.');
+      return; 
+    }
+    
+    if (!redirectUri) { 
+      log('❌ Redirect URI not configured'); 
+      alert('Redirect URI missing. Please check your .env.local file or Vercel environment variables.');
+      return; 
+    }
+    
     const authUrl = `https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=${apiKey}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-    log('Opening Upstox authorization page...');
+    
+    log('Opening Upstox authorization...');
+    log(`Using redirect URI: ${redirectUri}`);
+    
     const authWindow = window.open(authUrl, 'UpstoxAuth', 'width=600,height=700,left=200,top=100');
-    if (!authWindow) { alert('Popup blocked!'); return; }
+    
+    if (!authWindow) { 
+      alert('Popup blocked! Please allow popups for this site and try again.'); 
+      log('❌ Popup blocked');
+      return; 
+    }
+    
     setAuthStatus('⏳ Waiting for authorization...');
   };
 
   const exchangeCodeForToken = async (authCode: string) => {
     try {
       log('Exchanging code for token...');
-      const response = await fetch('/api/auth/token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: authCode }) });
+      log(`Code received: ${authCode.substring(0, 15)}...`);
+      
+      const response = await fetch('/api/auth/token', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ code: authCode }) 
+      });
+      
       const data = await response.json();
+      
+      log(`Token response status: ${response.status}`);
+      
       if (response.ok && data.access_token) {
         upstoxApi.setAccessToken(data.access_token);
         setAuthStatus('✓ Authenticated');
         setIsConnected(true);
-        log('✓ Token obtained');
-      } else throw new Error(data.error || 'Failed');
+        log('✓ Token obtained successfully');
+        log(`Token length: ${data.access_token.length} chars`);
+      } else {
+        const errorMsg = data.error || data.message || 'Failed to get token';
+        throw new Error(errorMsg);
+      }
     } catch (error: any) {
       setAuthStatus(`✗ Error: ${error.message}`);
       log(`✗ Auth error: ${error.message}`);
       setIsConnected(false);
+      alert(`Authentication failed!\n\n${error.message}\n\nPlease try again.`);
     }
   };
 
@@ -133,15 +174,11 @@ export function UpstoxConsole() {
 
     log(`Fetching ${stocks.length} stocks...`);
     
-    // DYNAMIC INSTRUMENT LOADING
-    const exchangeCode = exchange.split('_')[0]; // "NSE_EQ" -> "NSE"
-    log(`Loading ${exchangeCode} instrument master...`);
-    
-    const dynamicInstruments = await upstoxApi.loadCompleteInstrumentMaster(exchangeCode);
-    log(`✓ Loaded ${Object.keys(dynamicInstruments).length} instruments`);
-    
     setShowProgress(true);
     const results: StockResult[] = [];
+    
+    // Get static instruments map for the exchange
+    const exchangeInstruments = INSTRUMENTS[exchange as keyof typeof INSTRUMENTS];
     
     for (let i = 0; i < stocks.length; i++) {
       const symbol = stocks[i];
@@ -149,11 +186,17 @@ export function UpstoxConsole() {
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       
       try {
-        // Dynamic instrument key lookup
-        const instrumentKey = dynamicInstruments[symbol];
+        // Try static map first
+        let instrumentKey = exchangeInstruments?.[symbol as keyof typeof exchangeInstruments];
+        
+        // If not in static map, try API search (for new symbols)
+        if (!instrumentKey) {
+          log(`Searching API for ${symbol}...`);
+          instrumentKey = await upstoxApi.searchInstrumentKey(symbol, exchange);
+        }
         
         if (!instrumentKey) { 
-          log(`✗ ${symbol}: Not found in ${exchangeCode} instruments`); 
+          log(`✗ ${symbol}: Not found`); 
           continue; 
         }
         
