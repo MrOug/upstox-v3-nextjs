@@ -191,22 +191,21 @@ export function UpstoxConsole() {
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       
       try {
-       // Try dynamic first, then static fallback, then API search
-let instrumentKey: string | null = dynamicInstruments[symbol] || 
-  (exchangeInstruments[symbol as keyof typeof exchangeInstruments] as string) || 
-  null;
+        // Try dynamic first, then static fallback, then API search
+        let instrumentKey: string | null = dynamicInstruments[symbol] || 
+          (exchangeInstruments[symbol as keyof typeof exchangeInstruments] as string) || 
+          null;
 
-// If still not found, try V2 search API as last resort
-if (!instrumentKey) {
-  log(`Searching API for ${symbol}...`);
-  instrumentKey = await upstoxApi.searchSymbol(symbol, exchangeCode);
-}
+        // If still not found, try search as last resort
+        if (!instrumentKey) {
+          log(`Searching API for ${symbol}...`);
+          instrumentKey = await upstoxApi.searchSymbol(symbol, exchangeCode);
+        }
 
-if (!instrumentKey) { 
-  log(`✗ ${symbol}: Not found in ${exchangeCode}`); 
-  continue; 
-}
-
+        if (!instrumentKey) { 
+          log(`✗ ${symbol}: Not found in ${exchangeCode}`); 
+          continue; 
+        }
         
         const data = await upstoxApi.getHistoricalData(
           instrumentKey, 
@@ -451,21 +450,17 @@ if (!instrumentKey) {
     if (!chartSearchQuery) { log('❌ Enter symbol'); return; }
     log(`== SEARCH: ${chartSearchQuery} ==`);
     try {
-      const instrumentKey = await upstoxApi.searchSymbol(chartSearchQuery, exchange.split('_')[0]);
-if (!instrumentKey) { 
-  log('❌ No results'); 
-  return; 
-}
-setChartInstrumentKey(instrumentKey);
-log(`✓ Found: ${instrumentKey}`);
-return;
-
-      if (!data || !data.length) { log('❌ No results'); return; }
-      const first = data[0];
-      setChartInstrumentKey(first.instrument_key);
-      log(`✓ ${first.name || first.trading_symbol}`);
-      log(`✓ Key: ${first.instrument_key}`);
-    } catch (e: any) { log(`❌ ${e.message}`); }
+      const exchangeCode = exchange.split('_')[0];
+      const instrumentKey = await upstoxApi.searchSymbol(chartSearchQuery, exchangeCode);
+      if (!instrumentKey) { 
+        log('❌ No results'); 
+        return; 
+      }
+      setChartInstrumentKey(instrumentKey);
+      log(`✓ ${chartSearchQuery}: ${instrumentKey}`);
+    } catch (e: any) { 
+      log(`❌ ${e.message}`); 
+    }
   };
 
   const generateChart = () => {
