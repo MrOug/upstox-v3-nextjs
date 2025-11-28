@@ -1,4 +1,5 @@
 import axios from 'axios';
+import pako from 'pako';
 
 export class UpstoxAPI {
   private accessToken: string | null = null;
@@ -31,12 +32,20 @@ export class UpstoxAPI {
       const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange}.json.gz`;
       const response = await axios.get(url, { responseType: 'arraybuffer' });
       
-      // Note: pako decompression would be handled client-side with the CDN script
-      // For server-side, you'd need to import pako differently
-      // This is simplified for client-side usage
+      // Decompress gzip data
+      const decompressed = pako.ungzip(response.data, { to: 'string' });
+      const instruments = JSON.parse(decompressed);
       
-      this.dynamicInstruments = {};
-      console.log(`✓ Loaded ${Object.keys(this.dynamicInstruments).length} ${exchange} equity instruments`);
+      // Build symbol-to-instrumentKey map
+      const map: Record<string, string> = {};
+      for (const instrument of instruments) {
+        if (instrument.symbol && instrument.instrument_key) {
+          map[instrument.symbol] = instrument.instrument_key;
+        }
+      }
+      
+      this.dynamicInstruments = map;
+      console.log(`✓ Loaded ${Object.keys(map).length} ${exchange} instruments`);
       this.isLoadingInstruments = false;
       return this.dynamicInstruments;
       
