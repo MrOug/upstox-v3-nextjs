@@ -191,15 +191,22 @@ export function UpstoxConsole() {
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       
       try {
-        // Try dynamic first, then static fallback
-        let instrumentKey: string | null = dynamicInstruments[symbol] || 
-          (exchangeInstruments[symbol as keyof typeof exchangeInstruments] as string) || 
-          null;
-        
-        if (!instrumentKey) { 
-          log(`✗ ${symbol}: Not found`); 
-          continue; 
-        }
+       // Try dynamic first, then static fallback, then API search
+let instrumentKey: string | null = dynamicInstruments[symbol] || 
+  (exchangeInstruments[symbol as keyof typeof exchangeInstruments] as string) || 
+  null;
+
+// If still not found, try V2 search API as last resort
+if (!instrumentKey) {
+  log(`Searching API for ${symbol}...`);
+  instrumentKey = await upstoxApi.searchSymbol(symbol, exchangeCode);
+}
+
+if (!instrumentKey) { 
+  log(`✗ ${symbol}: Not found in ${exchangeCode}`); 
+  continue; 
+}
+
         
         const data = await upstoxApi.getHistoricalData(
           instrumentKey, 
