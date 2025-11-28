@@ -74,7 +74,6 @@ export function UpstoxConsole() {
     const apiKey = process.env.NEXT_PUBLIC_UPSTOX_API_KEY;
     let redirectUri = process.env.NEXT_PUBLIC_REDIRECT_URI;
     
-    // Auto-detect redirect URI if running in browser
     if (typeof window !== 'undefined' && !redirectUri) {
       redirectUri = `${window.location.origin}/callback`;
     }
@@ -127,7 +126,6 @@ export function UpstoxConsole() {
         setAuthStatus('✓ Authenticated');
         setIsConnected(true);
         log('✓ Token obtained successfully');
-        log(`Token length: ${data.access_token.length} chars`);
       } else {
         const errorMsg = data.error || data.message || 'Failed to get token';
         throw new Error(errorMsg);
@@ -174,11 +172,18 @@ export function UpstoxConsole() {
 
     log(`Fetching ${stocks.length} stocks...`);
     
+    // Load instruments via server-side API route (no CORS)
+    const exchangeCode = exchange.split('_')[0];
+    log(`Loading ${exchangeCode} instruments...`);
+    
+    const dynamicInstruments = await upstoxApi.loadInstruments(exchangeCode);
+    log(`✓ Loaded ${Object.keys(dynamicInstruments).length} instruments`);
+    
+    // Static fallback
+    const exchangeInstruments = INSTRUMENTS[exchange as keyof typeof INSTRUMENTS] || {};
+    
     setShowProgress(true);
     const results: StockResult[] = [];
-    
-    // Get static instruments map for the exchange
-    const exchangeInstruments = INSTRUMENTS[exchange as keyof typeof INSTRUMENTS];
     
     for (let i = 0; i < stocks.length; i++) {
       const symbol = stocks[i];
@@ -186,16 +191,10 @@ export function UpstoxConsole() {
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       
       try {
-       // Try static map first
-      let instrumentKey: string | null = exchangeInstruments?.[symbol as keyof typeof exchangeInstruments] || null;
-
-      // If not in static map, try API search (for new symbols)
-      if (!instrumentKey) {
-      log(`Searching API for ${symbol}...`);
-     instrumentKey = await upstoxApi.searchInstrumentKey(symbol, exchange);
-}
-
- 
+        // Try dynamic first, then static fallback
+        let instrumentKey: string | null = dynamicInstruments[symbol] || 
+          (exchangeInstruments[symbol as keyof typeof exchangeInstruments] as string) || 
+          null;
         
         if (!instrumentKey) { 
           log(`✗ ${symbol}: Not found`); 
@@ -250,7 +249,7 @@ export function UpstoxConsole() {
           
           log(`✓ ${symbol}: ${pct}%`);
         } else {
-          log(`✗ ${symbol}: No data returned`);
+          log(`✗ ${symbol}: No data`);
         }
       } catch (error: any) { 
         log(`✗ ${symbol}: ${error.message}`); 
