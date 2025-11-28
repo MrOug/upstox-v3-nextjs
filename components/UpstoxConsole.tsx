@@ -186,14 +186,16 @@ export function UpstoxConsole() {
       setProgressText(`Processing ${symbol} (${i + 1}/${stocks.length})`);
       
       try {
-        // Try static map first
-        let instrumentKey = exchangeInstruments?.[symbol as keyof typeof exchangeInstruments];
-        
-        // If not in static map, try API search (for new symbols)
-        if (!instrumentKey) {
-          log(`Searching API for ${symbol}...`);
-          instrumentKey = await upstoxApi.searchInstrumentKey(symbol, exchange);
-        }
+       // Try static map first
+      let instrumentKey: string | null = exchangeInstruments?.[symbol as keyof typeof exchangeInstruments] || null;
+
+      // If not in static map, try API search (for new symbols)
+      if (!instrumentKey) {
+      log(`Searching API for ${symbol}...`);
+     instrumentKey = await upstoxApi.searchInstrumentKey(symbol, exchange);
+}
+
+ 
         
         if (!instrumentKey) { 
           log(`✗ ${symbol}: Not found`); 
