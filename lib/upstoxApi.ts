@@ -13,7 +13,7 @@ export class UpstoxAPI {
   }
 
   /**
-   * Load instrument master from Upstox assets (direct download)
+   * Load instrument master via Next.js API route (server-side, no CORS)
    */
   async loadInstruments(exchange: string = 'NSE'): Promise<Record<string, string>> {
     // Check cache first
@@ -23,48 +23,31 @@ export class UpstoxAPI {
     }
 
     try {
-      console.log(`📥 Loading ${exchange} instruments...`);
+      console.log(`📥 Loading ${exchange} instruments via API route...`);
+      const response = await axios.get(`/api/instruments?exchange=${exchange}`);
       
-      // Upstox instrument master URL
-      const url = `https://assets.upstox.com/market-quote/instruments/exchange/${exchange.toLowerCase()}.json.gz`;
-      
-      const response = await axios.get(url, {
-        responseType: 'json',
-        headers: {
-          'Accept-Encoding': 'gzip, deflate',
-          'Accept': 'application/json'
-        }
-      });
-      
-      const instruments = response.data;
-      const instrumentMap: Record<string, string> = {};
-      
-      // Build symbol to instrument_key mapping
-      if (Array.isArray(instruments)) {
-        instruments.forEach((item: any) => {
-          if (item.trading_symbol && item.instrument_key) {
-            instrumentMap[item.trading_symbol] = item.instrument_key;
-          }
-        });
-      }
+      // Extract map from response
+      const data = response.data.map || response.data;
       
       // Cache the results
-      this.instrumentCache[exchange] = instrumentMap;
+      this.instrumentCache[exchange] = data;
       
-      console.log(`✓ Loaded ${Object.keys(instrumentMap).length} instrument mappings for ${exchange}`);
+      console.log(`✓ Loaded ${Object.keys(data).length} instrument mappings`);
       
-      return instrumentMap;
+      // Log metadata if available
+      if (response.data.metadata) {
+        console.log('Metadata:', response.data.metadata);
+      }
+      
+      return data;
     } catch (error: any) {
       console.error(`❌ Failed to load instruments: ${error.message}`);
-      
-      // Fallback: try via CORS proxy or return empty
-      console.log(`💡 Tip: Download instruments from: https://assets.upstox.com/market-quote/instruments/exchange/${exchange.toLowerCase()}.json.gz`);
       return {};
     }
   }
 
   /**
-   * Search for instrument key from loaded instruments (no API call)
+   * Search for instrument key from loaded instruments (no API search call)
    */
   async searchSymbol(symbol: string, exchange: string = 'NSE'): Promise<string | null> {
     try {
