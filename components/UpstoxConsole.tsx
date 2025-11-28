@@ -451,7 +451,15 @@ if (!instrumentKey) {
     if (!chartSearchQuery) { log('❌ Enter symbol'); return; }
     log(`== SEARCH: ${chartSearchQuery} ==`);
     try {
-      const data = await upstoxApi.searchStock(chartSearchQuery);
+      const instrumentKey = await upstoxApi.searchSymbol(chartSearchQuery, exchange.split('_')[0]);
+if (!instrumentKey) { 
+  log('❌ No results'); 
+  return; 
+}
+setChartInstrumentKey(instrumentKey);
+log(`✓ Found: ${instrumentKey}`);
+return;
+
       if (!data || !data.length) { log('❌ No results'); return; }
       const first = data[0];
       setChartInstrumentKey(first.instrument_key);
