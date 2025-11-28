@@ -1,58 +1,28 @@
-'use client';
-
-import { useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-
-function CallbackContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-
-  useEffect(() => {
-    const code = searchParams.get('code');
-    const error = searchParams.get('error');
-
-    if (error) {
-      console.error('Authentication error:', error);
-      alert(`Authentication failed: ${error}`);
-      window.close();
-      return;
+const exchangeCodeForToken = async (authCode: string) => {
+  try {
+    log('Exchanging code for token...');
+    log(`Code: ${authCode.substring(0, 10)}...`);
+    
+    const response = await fetch('/api/auth/token', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ code: authCode }) 
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.access_token) {
+      upstoxApi.setAccessToken(data.access_token);
+      setAuthStatus('✓ Authenticated');
+      setIsConnected(true);
+      log('✓ Token obtained successfully');
+      log(`✓ Token expires in: ${data.expires_in || 'N/A'} seconds`);
+    } else {
+      throw new Error(data.error || 'Failed to get access token');
     }
-
-    if (code) {
-      // Send code to opener window
-      if (window.opener) {
-        window.opener.postMessage({ type: 'UPSTOX_AUTH_CODE', code }, window.location.origin);
-        window.close();
-      } else {
-        // Fallback: store in sessionStorage and redirect
-        sessionStorage.setItem('upstox_auth_code', code);
-        router.push('/');
-      }
-    }
-  }, [searchParams, router]);
-
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100vh',
-      fontFamily: 'JetBrains Mono, monospace',
-      flexDirection: 'column',
-      gap: '20px'
-    }}>
-      <div style={{ fontSize: '24px' }}>🔐 Processing Authentication...</div>
-      <div style={{ fontSize: '14px', color: '#888' }}>
-        You can close this window if it doesn't close automatically.
-      </div>
-    </div>
-  );
-}
-
-export default function CallbackPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <CallbackContent />
-    </Suspense>
-  );
-}
+  } catch (error: any) {
+    setAuthStatus(`✗ Error: ${error.message}`);
+    log(`✗ Auth error: ${error.message}`);
+    setIsConnected(false);
+  }
+};
