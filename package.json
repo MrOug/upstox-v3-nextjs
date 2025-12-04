@@ -15,7 +15,9 @@
     "axios": "^1.6.2",
     "pako": "^2.1.0",
     "chart.js": "^4.4.0",
+    "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-chart-financial": "^0.2.1",
+    "date-fns": "^2.30.0",
     "papaparse": "^5.4.1"
   },
   "devDependencies": {
