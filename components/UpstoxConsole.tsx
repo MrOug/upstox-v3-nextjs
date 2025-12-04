@@ -47,6 +47,16 @@ export function UpstoxConsole() {
   const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
+    // Check for stored token on mount
+    if (upstoxApi.isTokenValid()) {
+      setIsConnected(true);
+      const remaining = upstoxApi.getTokenRemainingMs();
+      const hours = Math.floor(remaining / (1000 * 60 * 60));
+      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+      setAuthStatus(`✓ Logged in (expires in ${hours}h ${minutes}m)`);
+      log('✓ Session restored from storage');
+    }
+
     const code = sessionStorage.getItem('upstox_auth_code');
     if (code) {
       sessionStorage.removeItem('upstox_auth_code');
@@ -160,9 +170,9 @@ export function UpstoxConsole() {
 
     if (dataMode === 'myHoldings') {
       log('Fetching your portfolio holdings...');
-      const holdings = await upstoxApi.getHoldings();
-      log(`✓ Retrieved ${holdings.length} holdings`);
-      return holdings;
+      const holdingSymbols = await upstoxApi.getHoldingSymbols();
+      log(`✓ Retrieved ${holdingSymbols.length} holdings`);
+      return holdingSymbols;
     }
 
     // Static lists (fallback)
@@ -233,35 +243,34 @@ export function UpstoxConsole() {
           continue;
         }
 
-        const data = await upstoxApi.getHistoricalData(
+        const candles = await upstoxApi.getHistoricalData(
           instrumentKey,
-          unit,
+          unit as 'minutes' | 'hours' | 'days' | 'weeks' | 'months',
           intervalNum,
           toDate,
           fromDate
         );
 
-        if (data.data?.candles?.length) {
-          const candles = data.data.candles;
-          const latest = candles[0][4];
-          const oldest = candles[candles.length - 1][4];
-          const high = Math.max(...candles.map((c: any) => c[2]));
-          const low = Math.min(...candles.map((c: any) => c[3]));
+        if (candles.length) {
+          const latest = candles[0].close;
+          const oldest = candles[candles.length - 1].close;
+          const high = Math.max(...candles.map(c => c.high));
+          const low = Math.min(...candles.map(c => c.low));
           const change = latest - oldest;
           const pct = ((change / oldest) * 100).toFixed(2);
 
           let monthly: any[] = [];
           if (interval === 'months/1') {
-            monthly = candles.map((c: any) => ({
-              date: new Date(c[0]).toLocaleDateString('en-IN', {
+            monthly = candles.map((c) => ({
+              date: new Date(c.timestamp).toLocaleDateString('en-IN', {
                 year: 'numeric',
                 month: 'short'
               }),
-              open: c[1].toFixed(2),
-              close: c[4].toFixed(2),
-              high: c[2].toFixed(2),
-              low: c[3].toFixed(2),
-              change: ((c[4] - c[1]) / c[1] * 100).toFixed(2)
+              open: c.open.toFixed(2),
+              close: c.close.toFixed(2),
+              high: c.high.toFixed(2),
+              low: c.low.toFixed(2),
+              change: ((c.close - c.open) / c.open * 100).toFixed(2)
             })).reverse();
           }
 
