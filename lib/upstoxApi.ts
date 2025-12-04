@@ -100,11 +100,11 @@ export class UpstoxAPI {
   private tokenExpiresAt: number = 0;
   private instrumentCache: Record<string, Record<string, string>> = {};
   private lastRequestTime = 0;
-  private minRequestInterval = 100; // 100ms = 10 requests/second
+  private minRequestInterval = 200; // 200ms = 5 requests/second (more conservative)
   private circuitBreakerFailures = 0;
   private circuitBreakerOpenUntil = 0;
-  private readonly CIRCUIT_BREAKER_THRESHOLD = 5;
-  private readonly CIRCUIT_BREAKER_RESET_MS = 30000;
+  private readonly CIRCUIT_BREAKER_THRESHOLD = 20; // More lenient - allow 20 failures before opening
+  private readonly CIRCUIT_BREAKER_RESET_MS = 15000; // Reset after 15 seconds
 
   constructor() {
     // Load token from localStorage on initialization (client-side only)
