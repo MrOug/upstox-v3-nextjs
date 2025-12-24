@@ -72,8 +72,8 @@ export function StockChart({
 
     chartRef.current = chart;
 
-    // Add candlestick series using the new v5 API
-    const candlestickSeries = (chart as any).addCandlestickSeries({
+    // Add candlestick series (v4 API)
+    const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
       borderVisible: false,
