@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, LineData } from 'lightweight-charts';
+import { useEffect, useRef, useState } from 'react';
+import { createChart, ColorType, CandlestickData, Time } from 'lightweight-charts';
 import { calculatePersonalYear, calculatePersonalMonth } from '@/lib/numerology';
 
 interface StockChartProps {
@@ -30,8 +30,8 @@ export function StockChart({
   instrumentKey, symbol, companyName, incorporationDate, dateRange, accessToken, onClose
 }: StockChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const chartRef = useRef<any>(null);
+  const candlestickSeriesRef = useRef<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,7 +47,7 @@ export function StockChart({
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { color: '#1E1E2E' },
+        background: { type: ColorType.Solid, color: '#1E1E2E' },
         textColor: '#DDD',
       },
       grid: {
@@ -55,7 +55,7 @@ export function StockChart({
         horzLines: { color: '#2B2B43' },
       },
       crosshair: {
-        mode: 1, // Normal crosshair
+        mode: 1,
       },
       rightPriceScale: {
         borderColor: '#2B2B43',
@@ -72,8 +72,9 @@ export function StockChart({
 
     chartRef.current = chart;
 
-    // Add candlestick series
-    const candlestickSeries = chart.addCandlestickSeries({
+    // Add candlestick series using the new v5 API
+    const candlestickSeries = chart.addSeries({
+      type: 'Candlestick',
       upColor: '#26a69a',
       downColor: '#ef5350',
       borderVisible: false,
@@ -107,7 +108,9 @@ export function StockChart({
 
   // Load data when interval changes
   useEffect(() => {
-    loadChartData();
+    if (chartRef.current) {
+      loadChartData();
+    }
   }, [chartInterval, dateRange, instrumentKey]);
 
   // Update markers when numerology toggle changes
@@ -184,7 +187,7 @@ export function StockChart({
             const pm = calculatePersonalMonth(incorporationDate, monthYear);
             numData.push({ time: candle.time as string, py, pm });
 
-            // Add marker every N candles based on interval (to avoid overcrowding)
+            // Add marker every N candles based on interval
             const markerFrequency = chartInterval === 'days' ? 20 : chartInterval === 'weeks' ? 4 : 1;
             if (idx % markerFrequency === 0) {
               chartMarkers.push({
@@ -216,7 +219,6 @@ export function StockChart({
       if (candlestickSeriesRef.current) {
         candlestickSeriesRef.current.setData(candles);
 
-        // Set markers if numerology is enabled
         if (showNumerology && incorporationDate && incorporationDate !== 'N/A') {
           candlestickSeriesRef.current.setMarkers(chartMarkers);
         }
