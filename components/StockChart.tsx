@@ -132,15 +132,15 @@ export function StockChart({
       let fromDate: Date;
 
       // Adjust date range based on interval type (API limits)
-      // Daily: max ~6 months, Weekly: max ~2 years, Monthly: longer
+      // Daily: max ~1 year, Weekly: max ~3 years, Monthly: longer
       if (chartInterval === 'days') {
-        // For daily, limit to 3 months for performance
+        // For daily, use 6 months of data
         fromDate = new Date();
-        fromDate.setMonth(fromDate.getMonth() - 3);
+        fromDate.setMonth(fromDate.getMonth() - 6);
       } else if (chartInterval === 'weeks') {
-        // For weekly, limit to 1 year
+        // For weekly, use 2 years of data
         fromDate = new Date();
-        fromDate.setFullYear(fromDate.getFullYear() - 1);
+        fromDate.setFullYear(fromDate.getFullYear() - 2);
       } else {
         // For monthly, use the full date range
         switch (dateRange) {
