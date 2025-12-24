@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
-import { CandlestickController, CandlestickElement } from 'chartjs-chart-financial';
+import { CandlestickController, CandlestickElement, OhlcController, OhlcElement } from 'chartjs-chart-financial';
 import 'chartjs-adapter-date-fns';
 
-Chart.register(...registerables, CandlestickController, CandlestickElement);
+Chart.register(...registerables, CandlestickController, CandlestickElement, OhlcController, OhlcElement);
 
 interface StockChartProps {
   instrumentKey: string;
@@ -17,14 +17,14 @@ interface StockChartProps {
   onClose: () => void;
 }
 
-export function StockChart({ 
-  instrumentKey, 
-  symbol, 
-  companyName, 
-  incorporationDate, 
-  dateRange, 
+export function StockChart({
+  instrumentKey,
+  symbol,
+  companyName,
+  incorporationDate,
+  dateRange,
   accessToken,
-  onClose 
+  onClose
 }: StockChartProps) {
   const chartRef = useRef<HTMLCanvasElement>(null);
   const chartInstance = useRef<Chart | null>(null);
@@ -44,13 +44,13 @@ export function StockChart({
   const loadChartData = async () => {
     setLoading(true);
     setError('');
-    
+
     try {
       // Calculate date range
       const toDate = new Date().toISOString().split('T')[0];
       let fromDate: Date;
-      
-      switch(dateRange) {
+
+      switch (dateRange) {
         case '1Y':
           fromDate = new Date();
           fromDate.setFullYear(fromDate.getFullYear() - 1);
@@ -71,30 +71,37 @@ export function StockChart({
           fromDate = new Date();
           fromDate.setFullYear(fromDate.getFullYear() - 1);
       }
-      
+
       const fromDateStr = fromDate.toISOString().split('T')[0];
-      
-      // Fetch data from Upstox API
-      const url = `https://api.upstox.com/v3/historical-candle/${encodeURIComponent(instrumentKey)}/days/1/${toDate}/${fromDateStr}`;
-      
-      const response = await fetch(url, {
+
+      // Use API proxy route to avoid CORS issues
+      const response = await fetch('/api/historical', {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json'
-        }
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          instrumentKey,
+          interval: 'days',
+          intervalNum: '1',
+          toDate,
+          fromDate: fromDateStr,
+          accessToken
+        })
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to fetch data: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       if (!data.data?.candles || data.data.candles.length === 0) {
         throw new Error('No data available for this period');
       }
-      
-      // Transform data for Chart.js
+
+      // Transform data for Chart.js candlestick format
       const candles = data.data.candles.reverse().map((c: any) => ({
         x: new Date(c[0]).getTime(),
         o: c[1], // open
@@ -102,9 +109,10 @@ export function StockChart({
         l: c[3], // low
         c: c[4]  // close
       }));
-      
+
       setChartData(candles);
-      renderChart(candles);
+      // Small delay to ensure canvas is rendered
+      setTimeout(() => renderChart(candles), 100);
       setLoading(false);
     } catch (err: any) {
       console.error('Chart data error:', err);
@@ -114,86 +122,107 @@ export function StockChart({
   };
 
   const renderChart = (candles: any[]) => {
-    if (!chartRef.current) return;
-    
+    if (!chartRef.current) {
+      console.error('Canvas ref not available');
+      return;
+    }
+
     // Destroy existing chart
     if (chartInstance.current) {
       chartInstance.current.destroy();
     }
-    
+
     const ctx = chartRef.current.getContext('2d');
-    if (!ctx) return;
-    
-    const config: ChartConfiguration = {
-      type: 'candlestick',
-      data: {
-        datasets: [{
-          label: symbol,
-          data: candles
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          title: {
-            display: true,
-            text: `${symbol} - ${companyName}`,
-            font: {
-              size: 16,
-              weight: 'bold'
-            }
-          },
-          subtitle: {
-            display: true,
-            text: `Incorporation: ${incorporationDate} | Range: ${dateRange}`,
-            font: {
-              size: 12
-            }
-          },
-          legend: {
-            display: false
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context: any) {
-                const point = context.raw;
-                return [
-                  `Open: ₹${point.o.toFixed(2)}`,
-                  `High: ₹${point.h.toFixed(2)}`,
-                  `Low: ₹${point.l.toFixed(2)}`,
-                  `Close: ₹${point.c.toFixed(2)}`
-                ];
+    if (!ctx) {
+      console.error('Canvas context not available');
+      return;
+    }
+
+    try {
+      const config: ChartConfiguration = {
+        type: 'candlestick',
+        data: {
+          datasets: [{
+            label: symbol,
+            data: candles
+          } as any]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: `${symbol} - ${companyName}`,
+              font: {
+                size: 18,
+                weight: 'bold'
+              },
+              color: '#333'
+            },
+            subtitle: {
+              display: true,
+              text: `Incorporation: ${incorporationDate} | Range: ${dateRange}`,
+              font: {
+                size: 12
+              },
+              color: '#666'
+            },
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function (context: any) {
+                  const point = context.raw;
+                  return [
+                    `Open: ₹${point.o.toFixed(2)}`,
+                    `High: ₹${point.h.toFixed(2)}`,
+                    `Low: ₹${point.l.toFixed(2)}`,
+                    `Close: ₹${point.c.toFixed(2)}`
+                  ];
+                }
               }
             }
-          }
-        },
-        scales: {
-          x: {
-            type: 'time',
-            time: {
-              unit: dateRange === '1Y' ? 'month' : 'year',
-              displayFormats: {
-                month: 'MMM yyyy',
-                year: 'yyyy'
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: {
+                unit: dateRange === '1Y' ? 'month' : 'year',
+                displayFormats: {
+                  month: 'MMM yyyy',
+                  year: 'yyyy'
+                }
+              },
+              title: {
+                display: true,
+                text: 'Date'
+              },
+              grid: {
+                display: true,
+                color: 'rgba(0,0,0,0.1)'
               }
             },
-            title: {
-              display: true,
-              text: 'Date'
-            }
-          },
-          y: {
-            title: {
-              display: true,
-              text: 'Price (₹)'
+            y: {
+              title: {
+                display: true,
+                text: 'Price (₹)'
+              },
+              grid: {
+                display: true,
+                color: 'rgba(0,0,0,0.1)'
+              }
             }
           }
         }
-      }
-    };
-    
-    chartInstance.current = new Chart(ctx, config);
+      };
+
+      chartInstance.current = new Chart(ctx, config);
+    } catch (chartError: any) {
+      console.error('Chart render error:', chartError);
+      setError(`Chart render failed: ${chartError.message}`);
+    }
   };
 
   return (
@@ -203,7 +232,7 @@ export function StockChart({
       left: 0,
       right: 0,
       bottom: 0,
-      background: 'rgba(0, 0, 0, 0.9)',
+      background: 'rgba(0, 0, 0, 0.95)',
       zIndex: 9999,
       display: 'flex',
       flexDirection: 'column',
@@ -217,7 +246,7 @@ export function StockChart({
         color: 'white'
       }}>
         <h2 style={{ margin: 0 }}>📊 {symbol} Chart</h2>
-        <button 
+        <button
           onClick={onClose}
           style={{
             background: '#ff4444',
@@ -233,7 +262,7 @@ export function StockChart({
           ✕ Close
         </button>
       </div>
-      
+
       {loading && (
         <div style={{
           flex: 1,
@@ -246,7 +275,7 @@ export function StockChart({
           ⏳ Loading chart data...
         </div>
       )}
-      
+
       {error && (
         <div style={{
           flex: 1,
@@ -262,19 +291,27 @@ export function StockChart({
           <div style={{ fontSize: '14px', opacity: 0.8 }}>{error}</div>
         </div>
       )}
-      
+
       {!loading && !error && (
         <div style={{
           flex: 1,
           background: 'white',
           borderRadius: '10px',
           padding: '20px',
-          position: 'relative'
+          position: 'relative',
+          minHeight: '400px'
         }}>
-          <canvas ref={chartRef}></canvas>
+          <canvas
+            ref={chartRef}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: '400px'
+            }}
+          />
         </div>
       )}
-      
+
       {!loading && !error && chartData && (
         <div style={{
           marginTop: '15px',
@@ -282,7 +319,8 @@ export function StockChart({
           gap: '20px',
           color: 'white',
           fontSize: '14px',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          flexWrap: 'wrap'
         }}>
           <div>
             <span style={{ opacity: 0.7 }}>Data Points:</span> <strong>{chartData.length}</strong>

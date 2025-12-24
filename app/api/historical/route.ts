@@ -86,3 +86,59 @@ export async function GET(request: NextRequest) {
         );
     }
 }
+
+/**
+ * POST handler for chart data - accepts body parameters
+ */
+export async function POST(request: NextRequest) {
+    try {
+        const body = await request.json();
+        const { instrumentKey, interval, intervalNum, toDate, fromDate, accessToken } = body;
+
+        if (!instrumentKey || !toDate || !fromDate || !accessToken) {
+            return NextResponse.json(
+                { error: 'Missing required parameters' },
+                { status: 400 }
+            );
+        }
+
+        const unit = interval || 'days';
+        const num = intervalNum || '1';
+
+        const upstoxUrl = `https://api.upstox.com/v3/historical-candle/${encodeURIComponent(instrumentKey)}/${unit}/${num}/${toDate}/${fromDate}`;
+
+        console.log(`📡 Chart POST request to: ${upstoxUrl}`);
+
+        const response = await axios.get(upstoxUrl, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+            },
+            timeout: 30000
+        });
+
+        return NextResponse.json(response.data);
+    } catch (error: any) {
+        console.error('Chart API error:', error.message);
+
+        if (error.response?.status === 429) {
+            return NextResponse.json(
+                { error: 'Rate limit exceeded. Please wait.' },
+                { status: 429 }
+            );
+        }
+
+        if (error.response) {
+            return NextResponse.json(
+                { error: error.response.data?.message || error.message },
+                { status: error.response.status }
+            );
+        }
+
+        return NextResponse.json(
+            { error: error.message || 'Failed to fetch chart data' },
+            { status: 500 }
+        );
+    }
+}
+
