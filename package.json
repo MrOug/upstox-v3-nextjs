@@ -1,3 +1,28 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:97cc80439006892784193c1840b8372e950c3bc4cc73a2905d45a049572622cf
-size 727
+{
+    "name": "upstox-v3-console-nextjs",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint"
+    },
+    "dependencies": {
+        "chart.js": "^4.4.1",
+        "chartjs-adapter-date-fns": "^3.0.0",
+        "chartjs-chart-financial": "^0.2.1",
+        "date-fns": "^4.1.0",
+        "next": "14.2.35",
+        "react": "^18",
+        "react-dom": "^18"
+    },
+    "devDependencies": {
+        "@types/node": "^20",
+        "@types/react": "^18",
+        "@types/react-dom": "^18",
+        "eslint": "^8",
+        "eslint-config-next": "14.2.35",
+        "typescript": "^5"
+    }
+}
