@@ -1,18 +1,44 @@
 import axios from 'axios';
 import { COMPANY_FULL_NAMES } from './constants';
 
+const TOKEN_STORAGE_KEY = 'upstox_access_token';
+
 export class UpstoxAPI {
   private accessToken: string | null = null;
   private instrumentCache: Record<string, any> = {};
   private lastRequestTime = 0;
   private minRequestInterval = 100; // 100ms = 10 requests/second
 
+  constructor() {
+    // Try to restore token from localStorage on initialization
+    if (typeof window !== 'undefined') {
+      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (storedToken) {
+        this.accessToken = storedToken;
+        console.log('✓ Restored access token from localStorage');
+      }
+    }
+  }
+
   setAccessToken(token: string) {
     this.accessToken = token;
+    // Save to localStorage for persistence
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      console.log('✓ Access token saved to localStorage');
+    }
   }
 
   getAccessToken(): string | null {
     return this.accessToken;
+  }
+
+  clearToken() {
+    this.accessToken = null;
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      console.log('✓ Access token removed from localStorage');
+    }
   }
 
   /**

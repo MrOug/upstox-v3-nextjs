@@ -46,11 +46,22 @@ export function UpstoxConsole() {
   const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
+    // Check if token was restored from localStorage
+    const restoredToken = upstoxApi.getAccessToken();
+    if (restoredToken) {
+      setIsConnected(true);
+      setAuthStatus('✓ Session restored');
+      log('✓ Session restored from localStorage');
+    }
+
+    // Handle auth code from session storage (callback redirect)
     const code = sessionStorage.getItem('upstox_auth_code');
     if (code) {
       sessionStorage.removeItem('upstox_auth_code');
       exchangeCodeForToken(code);
     }
+
+    // Handle auth code from popup message
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data.type === 'UPSTOX_AUTH_CODE') exchangeCodeForToken(event.data.code);
