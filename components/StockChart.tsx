@@ -131,25 +131,19 @@ export function StockChart({
       const toDate = new Date().toISOString().split('T')[0];
       let fromDate: Date;
 
-      // Adjust date range based on interval type (API limits)
-      // Daily: max ~1 year, Weekly: max ~3 years, Monthly: longer
+      // Adjust date range based on interval type
       if (chartInterval === 'days') {
-        // For daily, use 6 months of data
+        // For daily, use 1 year of data (~250 trading days)
         fromDate = new Date();
-        fromDate.setMonth(fromDate.getMonth() - 6);
+        fromDate.setFullYear(fromDate.getFullYear() - 1);
       } else if (chartInterval === 'weeks') {
-        // For weekly, use 2 years of data
+        // For weekly, use 5 years of data (~260 weeks)
         fromDate = new Date();
-        fromDate.setFullYear(fromDate.getFullYear() - 2);
+        fromDate.setFullYear(fromDate.getFullYear() - 5);
       } else {
-        // For monthly, use the full date range
-        switch (dateRange) {
-          case '1Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 1); break;
-          case '2Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 2); break;
-          case '5Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 5); break;
-          case '10Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 10); break;
-          default: fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 1);
-        }
+        // For monthly, use 10 years of data
+        fromDate = new Date();
+        fromDate.setFullYear(fromDate.getFullYear() - 10);
       }
 
       const fromDateStr = fromDate.toISOString().split('T')[0];
