@@ -1,7 +1,25 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { createChart, ColorType, CandlestickData, Time } from 'lightweight-charts';
+import { useEffect, useState, useCallback } from 'react';
+import { format } from 'd3-format';
+import { timeFormat } from 'd3-time-format';
+import {
+  discontinuousTimeScaleProviderBuilder,
+  Chart,
+  ChartCanvas,
+  CandlestickSeries,
+  BarSeries,
+  XAxis,
+  YAxis,
+  CrossHairCursor,
+  EdgeIndicator,
+  MouseCoordinateX,
+  MouseCoordinateY,
+  OHLCTooltip,
+  ZoomButtons,
+  LabelAnnotation,
+  Annotate,
+} from 'react-financial-charts';
 import { calculatePersonalYear, calculatePersonalMonth } from '@/lib/numerology';
 
 interface StockChartProps {
@@ -16,6 +34,17 @@ interface StockChartProps {
 
 type ChartInterval = 'days' | 'weeks' | 'months';
 
+interface IOHLCData {
+  date: Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  py?: number;
+  pm?: number;
+}
+
 // Color mapping for numerology numbers
 const getNumerologyColor = (num: number): string => {
   const colors: Record<number, string> = {
@@ -29,101 +58,28 @@ const getNumerologyColor = (num: number): string => {
 export function StockChart({
   instrumentKey, symbol, companyName, incorporationDate, dateRange, accessToken, onClose
 }: StockChartProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
-  const candlestickSeriesRef = useRef<any>(null);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [chartInterval, setChartInterval] = useState<ChartInterval>('days');
   const [showNumerology, setShowNumerology] = useState(true);
-  const [numerologyData, setNumerologyData] = useState<Array<{ time: string, py: number, pm: number }>>([]);
+  const [chartData, setChartData] = useState<IOHLCData[]>([]);
   const [currentData, setCurrentData] = useState<{ price: number, py: number, pm: number } | null>(null);
-  const [markers, setMarkers] = useState<any[]>([]);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
-  // Initialize chart
+  // Handle resize
   useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#1E1E2E' },
-        textColor: '#DDD',
-      },
-      grid: {
-        vertLines: { color: '#2B2B43' },
-        horzLines: { color: '#2B2B43' },
-      },
-      crosshair: {
-        mode: 1,
-      },
-      rightPriceScale: {
-        borderColor: '#2B2B43',
-        scaleMargins: { top: 0.1, bottom: 0.2 },
-      },
-      timeScale: {
-        borderColor: '#2B2B43',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true },
-      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
-    });
-
-    chartRef.current = chart;
-
-    // Add candlestick series (v4 API)
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
-    });
-
-    candlestickSeriesRef.current = candlestickSeries;
-
-    // Handle resize
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-      }
+    const updateDimensions = () => {
+      setDimensions({
+        width: window.innerWidth - 30,
+        height: window.innerHeight - 150,
+      });
     };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
-    };
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Load data when interval changes
-  useEffect(() => {
-    if (chartRef.current) {
-      loadChartData();
-    }
-  }, [chartInterval, dateRange, instrumentKey]);
-
-  // Update markers when numerology toggle changes
-  useEffect(() => {
-    if (candlestickSeriesRef.current && markers.length > 0) {
-      if (showNumerology && incorporationDate && incorporationDate !== 'N/A') {
-        candlestickSeriesRef.current.setMarkers(markers);
-      } else {
-        candlestickSeriesRef.current.setMarkers([]);
-      }
-    }
-  }, [showNumerology, markers, incorporationDate]);
-
-  const loadChartData = async () => {
+  const loadChartData = useCallback(async () => {
     setLoading(true);
     setError('');
 
@@ -131,7 +87,6 @@ export function StockChart({
       const toDate = new Date().toISOString().split('T')[0];
       let fromDate: Date;
 
-      // Use the selected date range for all interval types
       switch (dateRange) {
         case '1Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 1); break;
         case '2Y': fromDate = new Date(); fromDate.setFullYear(fromDate.getFullYear() - 2); break;
@@ -162,71 +117,43 @@ export function StockChart({
         throw new Error('No data available for this period');
       }
 
-      // Transform data for lightweight-charts (oldest first)
-      const candles: CandlestickData[] = data.data.candles.reverse().map((c: any) => ({
-        time: c[0].split('T')[0] as Time,
-        open: c[1],
-        high: c[2],
-        low: c[3],
-        close: c[4]
-      }));
+      // Transform data for react-financial-charts (oldest first)
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-      // Calculate numerology and create markers
-      const numData: Array<{ time: string, py: number, pm: number }> = [];
-      const chartMarkers: any[] = [];
+      const candles: IOHLCData[] = data.data.candles.reverse().map((c: any) => {
+        const candleDate = new Date(c[0]);
+        const monthYear = `${monthNames[candleDate.getMonth()]} ${candleDate.getFullYear()}`;
 
-      if (incorporationDate && incorporationDate !== 'N/A') {
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        let py = 0;
+        let pm = 0;
 
-        candles.forEach((candle, idx) => {
-          const candleDate = new Date(candle.time as string);
-          const monthYear = `${monthNames[candleDate.getMonth()]} ${candleDate.getFullYear()}`;
-
+        if (incorporationDate && incorporationDate !== 'N/A') {
           try {
-            const py = calculatePersonalYear(incorporationDate, monthYear);
-            const pm = calculatePersonalMonth(incorporationDate, monthYear);
-            numData.push({ time: candle.time as string, py, pm });
-
-            // Add marker every N candles based on interval
-            const markerFrequency = chartInterval === 'days' ? 20 : chartInterval === 'weeks' ? 4 : 1;
-            if (idx % markerFrequency === 0) {
-              chartMarkers.push({
-                time: candle.time,
-                position: 'aboveBar',
-                color: getNumerologyColor(py),
-                shape: 'circle',
-                text: `${py}/${pm}`,
-                size: 1
-              });
-            }
+            py = calculatePersonalYear(incorporationDate, monthYear);
+            pm = calculatePersonalMonth(incorporationDate, monthYear);
           } catch (e) {
-            numData.push({ time: candle.time as string, py: 0, pm: 0 });
+            // Ignore numerology calculation errors
           }
-        });
-      }
+        }
 
-      setNumerologyData(numData);
-      setMarkers(chartMarkers);
+        return {
+          date: candleDate,
+          open: c[1],
+          high: c[2],
+          low: c[3],
+          close: c[4],
+          volume: c[5] || 0,
+          py,
+          pm,
+        };
+      });
+
+      setChartData(candles);
 
       // Set current data (latest)
-      if (candles.length > 0 && numData.length > 0) {
+      if (candles.length > 0) {
         const latest = candles[candles.length - 1];
-        const latestNum = numData[numData.length - 1];
-        setCurrentData({ price: latest.close, py: latestNum.py, pm: latestNum.pm });
-      }
-
-      // Update chart
-      if (candlestickSeriesRef.current) {
-        candlestickSeriesRef.current.setData(candles);
-
-        if (showNumerology && incorporationDate && incorporationDate !== 'N/A') {
-          candlestickSeriesRef.current.setMarkers(chartMarkers);
-        }
-      }
-
-      // Fit content
-      if (chartRef.current) {
-        chartRef.current.timeScale().fitContent();
+        setCurrentData({ price: latest.close, py: latest.py || 0, pm: latest.pm || 0 });
       }
 
       setLoading(false);
@@ -235,42 +162,51 @@ export function StockChart({
       setError(err.message);
       setLoading(false);
     }
+  }, [instrumentKey, chartInterval, dateRange, accessToken, incorporationDate]);
+
+  // Load data when interval changes
+  useEffect(() => {
+    loadChartData();
+  }, [loadChartData]);
+
+  // Chart configuration
+  const margin = { left: 0, right: 60, top: 10, bottom: 30 };
+  const pricesDisplayFormat = format('.2f');
+  const volumeFormat = format('.4s');
+  const xScaleProvider = discontinuousTimeScaleProviderBuilder().inputDateAccessor((d: IOHLCData) => d.date);
+
+  // Prepare chart data
+  const { data, xScale, xAccessor, displayXAccessor } = xScaleProvider(chartData);
+
+  const max = data.length > 0 ? xAccessor(data[data.length - 1]) : 0;
+  const min = data.length > 0 ? xAccessor(data[Math.max(0, data.length - 100)]) : 0;
+  const xExtents = [min, max + 5];
+
+  const gridHeight = dimensions.height - margin.top - margin.bottom;
+  const volumeChartHeight = gridHeight * 0.2;
+  const candleChartHeight = gridHeight * 0.8;
+  const volumeChartOrigin = (_: number, h: number) => [0, h - volumeChartHeight];
+
+  // Accessor functions
+  const candleChartExtents = (d: IOHLCData) => [d.high, d.low];
+  const volumeExtents = (d: IOHLCData) => d.volume;
+  const volumeColor = (d: IOHLCData) => (d.close > d.open ? 'rgba(38, 166, 154, 0.3)' : 'rgba(239, 83, 80, 0.3)');
+  const openCloseColor = (d: IOHLCData) => (d.close > d.open ? '#26a69a' : '#ef5350');
+
+  // Numerology annotation props - show PY/PM markers
+  const markerFrequency = chartInterval === 'days' ? 20 : chartInterval === 'weeks' ? 4 : 1;
+
+  const numerologyAnnotationProps = {
+    fontFamily: 'Arial',
+    fontSize: 10,
+    fill: (d: IOHLCData) => getNumerologyColor(d.py || 0),
+    text: (d: IOHLCData) => `${d.py}/${d.pm}`,
+    y: ({ yScale, datum }: { yScale: any, datum: IOHLCData }) => yScale(datum.high) - 15,
+    tooltip: (d: IOHLCData) => `PY: ${d.py}, PM: ${d.pm}`,
   };
 
-  // Zoom controls
-  const zoomIn = () => {
-    if (chartRef.current) {
-      const timeScale = chartRef.current.timeScale();
-      const currentRange = timeScale.getVisibleLogicalRange();
-      if (currentRange) {
-        const newRange = {
-          from: currentRange.from + (currentRange.to - currentRange.from) * 0.1,
-          to: currentRange.to - (currentRange.to - currentRange.from) * 0.1,
-        };
-        timeScale.setVisibleLogicalRange(newRange);
-      }
-    }
-  };
-
-  const zoomOut = () => {
-    if (chartRef.current) {
-      const timeScale = chartRef.current.timeScale();
-      const currentRange = timeScale.getVisibleLogicalRange();
-      if (currentRange) {
-        const newRange = {
-          from: currentRange.from - (currentRange.to - currentRange.from) * 0.2,
-          to: currentRange.to + (currentRange.to - currentRange.from) * 0.2,
-        };
-        timeScale.setVisibleLogicalRange(newRange);
-      }
-    }
-  };
-
-  const resetZoom = () => {
-    if (chartRef.current) {
-      chartRef.current.timeScale().fitContent();
-    }
-  };
+  // Filter data for numerology markers
+  const numerologyData = data.filter((_: IOHLCData, idx: number) => idx % markerFrequency === 0);
 
   return (
     <div style={{
@@ -304,13 +240,6 @@ export function StockChart({
               background: chartInterval === int ? '#4CAF50' : 'transparent', color: 'white', fontWeight: chartInterval === int ? 'bold' : 'normal'
             }}>{int === 'days' ? '1D' : int === 'weeks' ? '1W' : '1M'}</button>
           ))}
-        </div>
-
-        {/* Zoom buttons */}
-        <div style={{ display: 'flex', gap: '4px', background: '#2B2B43', borderRadius: '4px', padding: '2px' }}>
-          <button onClick={zoomIn} style={{ padding: '6px 12px', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '14px', background: 'transparent', color: 'white' }}>🔍+</button>
-          <button onClick={zoomOut} style={{ padding: '6px 12px', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '14px', background: 'transparent', color: 'white' }}>🔍-</button>
-          <button onClick={resetZoom} style={{ padding: '6px 12px', border: 'none', borderRadius: '3px', cursor: 'pointer', fontSize: '12px', background: 'transparent', color: 'white' }}>Reset</button>
         </div>
 
         {/* Numerology toggle */}
@@ -379,12 +308,102 @@ export function StockChart({
             }}>Retry</button>
           </div>
         )}
-        <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
+
+        {!loading && !error && data.length > 0 && (
+          <ChartCanvas
+            height={dimensions.height}
+            ratio={typeof window !== 'undefined' ? window.devicePixelRatio : 1}
+            width={dimensions.width}
+            margin={margin}
+            data={data}
+            displayXAccessor={displayXAccessor}
+            seriesName="Stock"
+            xScale={xScale}
+            xAccessor={xAccessor}
+            xExtents={xExtents}
+          >
+            {/* Volume Chart */}
+            <Chart id={2} height={volumeChartHeight} origin={volumeChartOrigin} yExtents={volumeExtents}>
+              <BarSeries fillStyle={volumeColor} yAccessor={(d: IOHLCData) => d.volume} />
+              <YAxis
+                axisAt="right"
+                orient="right"
+                ticks={3}
+                tickFormat={volumeFormat}
+                strokeStyle="#2B2B43"
+                tickLabelFill="#888"
+              />
+            </Chart>
+
+            {/* Main Candlestick Chart */}
+            <Chart id={1} height={candleChartHeight} yExtents={candleChartExtents}>
+              <XAxis
+                showGridLines
+                gridLinesStrokeStyle="#2B2B43"
+                strokeStyle="#2B2B43"
+                tickLabelFill="#DDD"
+              />
+              <YAxis
+                axisAt="right"
+                orient="right"
+                showGridLines
+                gridLinesStrokeStyle="#2B2B43"
+                strokeStyle="#2B2B43"
+                tickLabelFill="#DDD"
+                tickFormat={pricesDisplayFormat}
+              />
+
+              <CandlestickSeries
+                fill={(d: IOHLCData) => d.close > d.open ? '#26a69a' : '#ef5350'}
+                wickStroke={(d: IOHLCData) => d.close > d.open ? '#26a69a' : '#ef5350'}
+              />
+
+              {/* Numerology Markers */}
+              {showNumerology && incorporationDate !== 'N/A' && (
+                <Annotate
+                  with={LabelAnnotation}
+                  when={(d: IOHLCData, idx: number) => idx % markerFrequency === 0 && d.py !== 0}
+                  usingProps={numerologyAnnotationProps}
+                />
+              )}
+
+              <MouseCoordinateY
+                at="right"
+                orient="right"
+                displayFormat={pricesDisplayFormat}
+                rectWidth={margin.right}
+                fill="#2B2B43"
+                textFill="#DDD"
+              />
+
+              <EdgeIndicator
+                itemType="last"
+                orient="right"
+                edgeAt="right"
+                yAccessor={(d: IOHLCData) => d.close}
+                fill={openCloseColor}
+                lineStroke={openCloseColor}
+                displayFormat={pricesDisplayFormat}
+                rectWidth={margin.right}
+              />
+
+              <OHLCTooltip
+                origin={[8, 16]}
+                textFill="#DDD"
+                labelFill="#888"
+              />
+
+              <ZoomButtons />
+            </Chart>
+
+            <CrossHairCursor strokeStyle="#888" />
+          </ChartCanvas>
+        )}
       </div>
 
       {/* Footer hint */}
       <div style={{ color: '#666', fontSize: '11px', textAlign: 'center', marginTop: '8px' }}>
-        💡 Scroll to zoom • Drag to pan • Use buttons for precise control • Markers show PY/PM values
+        💡 Scroll to zoom • Drag to pan • Use zoom buttons for precise control • Markers show PY/PM values
       </div>
     </div>
   );
