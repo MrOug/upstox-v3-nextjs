@@ -1,5 +1,8 @@
 import axios from 'axios';
-import { COMPANY_FULL_NAMES } from './constants';
+import { COMPANY_FULL_NAMES, NIFTY_50 } from './constants';
+
+type PerformanceType = 'gainers' | 'losers';
+type PerformancePeriod = 'daily' | 'weekly' | 'monthly';
 
 const TOKEN_STORAGE_KEY = 'upstox_access_token';
 
@@ -221,65 +224,33 @@ export class UpstoxAPI {
   }
 
   /**
-   * Get Top Gainers - Calculate from market data (Upstox has no direct API)
-   * Uses Nifty 500 universe and calculates % change from previous close
+   * Get top-performing stocks (gainers or losers) for a given period.
+   * Daily uses quotes-based calculation; weekly/monthly use historical data.
    */
-  async getTopGainers(limit: number = 50): Promise<string[]> {
+  async getTopByPerformance(
+    type: PerformanceType,
+    period: PerformancePeriod,
+    limit: number = 50
+  ): Promise<string[]> {
     if (!this.accessToken) {
       throw new Error('No access token available');
     }
 
-    try {
-      // Since there's no direct API, fetch from a stock universe
-      // Using Nifty 500 as the universe (you can adjust this)
-      const instruments = await this.loadInstruments('NSE');
-      const symbols = Object.keys(instruments).slice(0, 500); // Get first 500 stocks
+    const isGainer = type === 'gainers';
+    const label = `${period} ${type}`;
 
-      console.log(`📊 Calculating top gainers from ${symbols.length} stocks...`);
-
-      // Fetch quotes in batches of 100 (API limit)
-      const quotes = await this.getBatchQuotes(symbols.map(s => instruments[s]));
-
-      // Calculate % change and sort
-      const stockChanges = Object.entries(quotes)
-        .map(([key, data]: [string, any]) => {
-          const symbol = key.split('|')[1] || key.split(':')[1];
-          const ltp = data.last_price || data.ltp;
-          const prevClose = data.ohlc?.close || data.close || data.prev_close;
-
-          if (!prevClose || prevClose === 0) return null;
-
-          const change = ((ltp - prevClose) / prevClose) * 100;
-          return { symbol, change, ltp, prevClose };
-        })
-        .filter(item => item !== null && item.change > 0) // Only gainers
-        .sort((a, b) => (b?.change || 0) - (a?.change || 0)) // Sort descending
-        .slice(0, limit)
-        .map(item => item!.symbol);
-
-      console.log(`✓ Fetched ${stockChanges.length} top gainers`);
-      return stockChanges;
-    } catch (error: any) {
-      console.error('Failed to fetch top gainers:', error.message);
-      // Fallback to Nifty 50 if calculation fails
-      console.log('⚠️ Falling back to Nifty 50 stocks');
-      return ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK', 'BAJFINANCE', 'LT', 'ASIANPAINT', 'AXISBANK', 'MARUTI', 'TITAN', 'SUNPHARMA', 'ULTRACEMCO', 'NESTLEIND', 'WIPRO', 'HCLTECH', 'TECHM', 'POWERGRID', 'NTPC', 'BAJAJFINSV', 'M&M', 'ONGC', 'TATASTEEL', 'ADANIPORTS', 'JSWSTEEL', 'INDUSINDBK', 'GRASIM', 'TATAMOTORS', 'DIVISLAB', 'DRREDDY', 'BRITANNIA', 'CIPLA', 'EICHERMOT', 'HINDALCO', 'BPCL', 'COALINDIA', 'HEROMOTOCO', 'UPL', 'SHREECEM', 'APOLLOHOSP', 'SBILIFE', 'BAJAJ-AUTO', 'ADANIENT', 'HDFCLIFE', 'TATACONSUM'];
+    if (period === 'daily') {
+      return this.getDailyGainersLosers(isGainer, limit, label);
     }
+    return this.getHistoricalGainersLosers(isGainer, period, limit, label);
   }
 
-  /**
-   * Get Top Losers - Calculate from market data
-   */
-  async getTopLosers(limit: number = 50): Promise<string[]> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
+  /** Backend for daily gainers/losers (quotes-based) */
+  private async getDailyGainersLosers(isGainer: boolean, limit: number, label: string): Promise<string[]> {
     try {
       const instruments = await this.loadInstruments('NSE');
       const symbols = Object.keys(instruments).slice(0, 500);
-
-      console.log(`📊 Calculating top losers from ${symbols.length} stocks...`);
+      console.log(`📊 Calculating top ${label} from ${symbols.length} stocks...`);
 
       const quotes = await this.getBatchQuotes(symbols.map(s => instruments[s]));
 
@@ -288,271 +259,117 @@ export class UpstoxAPI {
           const symbol = key.split('|')[1] || key.split(':')[1];
           const ltp = data.last_price || data.ltp;
           const prevClose = data.ohlc?.close || data.close || data.prev_close;
-
           if (!prevClose || prevClose === 0) return null;
-
           const change = ((ltp - prevClose) / prevClose) * 100;
-          return { symbol, change, ltp, prevClose };
+          return { symbol, change };
         })
-        .filter(item => item !== null && item.change < 0) // Only losers
-        .sort((a, b) => (a?.change || 0) - (b?.change || 0)) // Sort ascending (most negative first)
+        .filter(item => item !== null && (isGainer ? item.change > 0 : item.change < 0))
+        .sort((a, b) => isGainer
+          ? (b?.change || 0) - (a?.change || 0)
+          : (a?.change || 0) - (b?.change || 0))
         .slice(0, limit)
         .map(item => item!.symbol);
 
-      console.log(`✓ Fetched ${stockChanges.length} top losers`);
+      console.log(`✓ Found ${stockChanges.length} top ${label}`);
       return stockChanges;
     } catch (error: any) {
-      console.error('Failed to fetch top losers:', error.message);
-      console.log('⚠️ Falling back to Nifty 50 stocks');
-      return ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK', 'BAJFINANCE', 'LT', 'ASIANPAINT', 'AXISBANK', 'MARUTI', 'TITAN', 'SUNPHARMA', 'ULTRACEMCO', 'NESTLEIND', 'WIPRO', 'HCLTECH', 'TECHM', 'POWERGRID', 'NTPC', 'BAJAJFINSV', 'M&M', 'ONGC', 'TATASTEEL', 'ADANIPORTS', 'JSWSTEEL', 'INDUSINDBK', 'GRASIM', 'TATAMOTORS', 'DIVISLAB', 'DRREDDY', 'BRITANNIA', 'CIPLA', 'EICHERMOT', 'HINDALCO', 'BPCL', 'COALINDIA', 'HEROMOTOCO', 'UPL', 'SHREECEM', 'APOLLOHOSP', 'SBILIFE', 'BAJAJ-AUTO', 'ADANIENT', 'HDFCLIFE', 'TATACONSUM'];
+      console.error(`Failed to fetch ${label}:`, error.message);
+      return this.getFallbackStocks();
+    }
+  }
+
+  /** Backend for weekly/monthly gainers/losers (historical data-based) */
+  private async getHistoricalGainersLosers(isGainer: boolean, period: 'weekly' | 'monthly', limit: number, label: string): Promise<string[]> {
+    try {
+      const instruments = await this.loadInstruments('NSE');
+      const symbols = Object.keys(instruments).slice(0, 200);
+      const interval = period === 'weekly' ? 'weeks' : 'months';
+      const lookbackDays = period === 'weekly' ? 14 : 60;
+
+      console.log(`📊 Calculating ${label} from ${symbols.length} stocks...`);
+
+      const toDate = new Date().toISOString().split('T')[0];
+      const fromDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const stockChanges: Array<{ symbol: string, change: number }> = [];
+
+      for (let i = 0; i < symbols.length; i += 10) {
+        const batch = symbols.slice(i, i + 10);
+        const batchPromises = batch.map(async (symbol) => {
+          try {
+            const instrumentKey = instruments[symbol];
+            const data = await this.rateLimitedRequest(() =>
+              this.getHistoricalData(instrumentKey, interval, '1', toDate, fromDate)
+            );
+            if (data.data?.candles?.length >= 2) {
+              const candles = data.data.candles;
+              const change = ((candles[0][4] - candles[1][4]) / candles[1][4]) * 100;
+              return { symbol, change };
+            }
+            return null;
+          } catch (e) {
+            return null;
+          }
+        });
+
+        const results = await Promise.all(batchPromises);
+        results.forEach(r => { if (r && (isGainer ? r.change > 0 : r.change < 0)) stockChanges.push(r); });
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      const sorted = stockChanges
+        .sort((a, b) => isGainer ? b.change - a.change : a.change - b.change)
+        .slice(0, limit)
+        .map(item => item.symbol);
+
+      console.log(`✓ Found ${sorted.length} top ${label}`);
+      return sorted;
+    } catch (error: any) {
+      console.error(`Failed to fetch ${label}:`, error.message);
+      return this.getFallbackStocks();
     }
   }
 
   /**
-   * Get Top Weekly Gainers - Calculate from weekly historical data
-   * Uses Nifty 200 universe and calculates % change over the past week
+   * Get Top Daily Gainers
+   */
+  async getTopGainers(limit: number = 50): Promise<string[]> {
+    return this.getTopByPerformance('gainers', 'daily', limit);
+  }
+
+  /**
+   * Get Top Daily Losers
+   */
+  async getTopLosers(limit: number = 50): Promise<string[]> {
+    return this.getTopByPerformance('losers', 'daily', limit);
+  }
+
+  /**
+   * Get Top Weekly Gainers
    */
   async getWeeklyGainers(limit: number = 50): Promise<string[]> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
-    try {
-      const instruments = await this.loadInstruments('NSE');
-      const symbols = Object.keys(instruments).slice(0, 200); // Use top 200 for performance
-
-      console.log(`📊 Calculating weekly gainers from ${symbols.length} stocks...`);
-
-      const toDate = new Date().toISOString().split('T')[0];
-      const fromDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 2 weeks back
-
-      const stockChanges: Array<{ symbol: string, change: number }> = [];
-
-      // Process in batches to avoid rate limiting
-      for (let i = 0; i < symbols.length; i += 10) {
-        const batch = symbols.slice(i, i + 10);
-
-        const batchPromises = batch.map(async (symbol) => {
-          try {
-            const instrumentKey = instruments[symbol];
-            const data = await this.rateLimitedRequest(() =>
-              this.getHistoricalData(instrumentKey, 'weeks', '1', toDate, fromDate)
-            );
-
-            if (data.data?.candles?.length >= 2) {
-              const candles = data.data.candles;
-              const latestClose = candles[0][4];
-              const previousClose = candles[1][4];
-              const change = ((latestClose - previousClose) / previousClose) * 100;
-              return { symbol, change };
-            }
-            return null;
-          } catch (e) {
-            return null;
-          }
-        });
-
-        const results = await Promise.all(batchPromises);
-        results.forEach(r => { if (r && r.change > 0) stockChanges.push(r); });
-
-        // Small delay between batches
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      const sorted = stockChanges
-        .sort((a, b) => b.change - a.change)
-        .slice(0, limit)
-        .map(item => item.symbol);
-
-      console.log(`✓ Found ${sorted.length} weekly gainers`);
-      return sorted;
-    } catch (error: any) {
-      console.error('Failed to fetch weekly gainers:', error.message);
-      return this.getFallbackStocks();
-    }
+    return this.getTopByPerformance('gainers', 'weekly', limit);
   }
 
   /**
-   * Get Top Weekly Losers - Calculate from weekly historical data
+   * Get Top Weekly Losers
    */
   async getWeeklyLosers(limit: number = 50): Promise<string[]> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
-    try {
-      const instruments = await this.loadInstruments('NSE');
-      const symbols = Object.keys(instruments).slice(0, 200);
-
-      console.log(`📊 Calculating weekly losers from ${symbols.length} stocks...`);
-
-      const toDate = new Date().toISOString().split('T')[0];
-      const fromDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      const stockChanges: Array<{ symbol: string, change: number }> = [];
-
-      for (let i = 0; i < symbols.length; i += 10) {
-        const batch = symbols.slice(i, i + 10);
-
-        const batchPromises = batch.map(async (symbol) => {
-          try {
-            const instrumentKey = instruments[symbol];
-            const data = await this.rateLimitedRequest(() =>
-              this.getHistoricalData(instrumentKey, 'weeks', '1', toDate, fromDate)
-            );
-
-            if (data.data?.candles?.length >= 2) {
-              const candles = data.data.candles;
-              const latestClose = candles[0][4];
-              const previousClose = candles[1][4];
-              const change = ((latestClose - previousClose) / previousClose) * 100;
-              return { symbol, change };
-            }
-            return null;
-          } catch (e) {
-            return null;
-          }
-        });
-
-        const results = await Promise.all(batchPromises);
-        results.forEach(r => { if (r && r.change < 0) stockChanges.push(r); });
-
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      const sorted = stockChanges
-        .sort((a, b) => a.change - b.change) // Most negative first
-        .slice(0, limit)
-        .map(item => item.symbol);
-
-      console.log(`✓ Found ${sorted.length} weekly losers`);
-      return sorted;
-    } catch (error: any) {
-      console.error('Failed to fetch weekly losers:', error.message);
-      return this.getFallbackStocks();
-    }
+    return this.getTopByPerformance('losers', 'weekly', limit);
   }
 
   /**
-   * Get Top Monthly Gainers - Calculate from monthly historical data
+   * Get Top Monthly Gainers
    */
   async getMonthlyGainers(limit: number = 50): Promise<string[]> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
-    try {
-      const instruments = await this.loadInstruments('NSE');
-      const symbols = Object.keys(instruments).slice(0, 200);
-
-      console.log(`📊 Calculating monthly gainers from ${symbols.length} stocks...`);
-
-      const toDate = new Date().toISOString().split('T')[0];
-      const fromDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 2 months back
-
-      const stockChanges: Array<{ symbol: string, change: number }> = [];
-
-      for (let i = 0; i < symbols.length; i += 10) {
-        const batch = symbols.slice(i, i + 10);
-
-        const batchPromises = batch.map(async (symbol) => {
-          try {
-            const instrumentKey = instruments[symbol];
-            const data = await this.rateLimitedRequest(() =>
-              this.getHistoricalData(instrumentKey, 'months', '1', toDate, fromDate)
-            );
-
-            if (data.data?.candles?.length >= 2) {
-              const candles = data.data.candles;
-              const latestClose = candles[0][4];
-              const previousClose = candles[1][4];
-              const change = ((latestClose - previousClose) / previousClose) * 100;
-              return { symbol, change };
-            }
-            return null;
-          } catch (e) {
-            return null;
-          }
-        });
-
-        const results = await Promise.all(batchPromises);
-        results.forEach(r => { if (r && r.change > 0) stockChanges.push(r); });
-
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      const sorted = stockChanges
-        .sort((a, b) => b.change - a.change)
-        .slice(0, limit)
-        .map(item => item.symbol);
-
-      console.log(`✓ Found ${sorted.length} monthly gainers`);
-      return sorted;
-    } catch (error: any) {
-      console.error('Failed to fetch monthly gainers:', error.message);
-      return this.getFallbackStocks();
-    }
+    return this.getTopByPerformance('gainers', 'monthly', limit);
   }
 
   /**
-   * Get Top Monthly Losers - Calculate from monthly historical data
+   * Get Top Monthly Losers
    */
   async getMonthlyLosers(limit: number = 50): Promise<string[]> {
-    if (!this.accessToken) {
-      throw new Error('No access token available');
-    }
-
-    try {
-      const instruments = await this.loadInstruments('NSE');
-      const symbols = Object.keys(instruments).slice(0, 200);
-
-      console.log(`📊 Calculating monthly losers from ${symbols.length} stocks...`);
-
-      const toDate = new Date().toISOString().split('T')[0];
-      const fromDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      const stockChanges: Array<{ symbol: string, change: number }> = [];
-
-      for (let i = 0; i < symbols.length; i += 10) {
-        const batch = symbols.slice(i, i + 10);
-
-        const batchPromises = batch.map(async (symbol) => {
-          try {
-            const instrumentKey = instruments[symbol];
-            const data = await this.rateLimitedRequest(() =>
-              this.getHistoricalData(instrumentKey, 'months', '1', toDate, fromDate)
-            );
-
-            if (data.data?.candles?.length >= 2) {
-              const candles = data.data.candles;
-              const latestClose = candles[0][4];
-              const previousClose = candles[1][4];
-              const change = ((latestClose - previousClose) / previousClose) * 100;
-              return { symbol, change };
-            }
-            return null;
-          } catch (e) {
-            return null;
-          }
-        });
-
-        const results = await Promise.all(batchPromises);
-        results.forEach(r => { if (r && r.change < 0) stockChanges.push(r); });
-
-        await new Promise(r => setTimeout(r, 200));
-      }
-
-      const sorted = stockChanges
-        .sort((a, b) => a.change - b.change)
-        .slice(0, limit)
-        .map(item => item.symbol);
-
-      console.log(`✓ Found ${sorted.length} monthly losers`);
-      return sorted;
-    } catch (error: any) {
-      console.error('Failed to fetch monthly losers:', error.message);
-      return this.getFallbackStocks();
-    }
+    return this.getTopByPerformance('losers', 'monthly', limit);
   }
 
   /**
@@ -560,7 +377,7 @@ export class UpstoxAPI {
    */
   private getFallbackStocks(): string[] {
     console.log('⚠️ Falling back to Nifty 50 stocks');
-    return ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR', 'ITC', 'SBIN', 'BHARTIARTL', 'KOTAKBANK', 'BAJFINANCE', 'LT', 'ASIANPAINT', 'AXISBANK', 'MARUTI', 'TITAN', 'SUNPHARMA', 'ULTRACEMCO', 'NESTLEIND', 'WIPRO', 'HCLTECH', 'TECHM', 'POWERGRID', 'NTPC', 'BAJAJFINSV', 'M&M', 'ONGC', 'TATASTEEL', 'ADANIPORTS', 'JSWSTEEL', 'INDUSINDBK', 'GRASIM', 'TATAMOTORS', 'DIVISLAB', 'DRREDDY', 'BRITANNIA', 'CIPLA', 'EICHERMOT', 'HINDALCO', 'BPCL', 'COALINDIA', 'HEROMOTOCO', 'UPL', 'SHREECEM', 'APOLLOHOSP', 'SBILIFE', 'BAJAJ-AUTO', 'ADANIENT', 'HDFCLIFE', 'TATACONSUM'];
+    return [...NIFTY_50];
   }
 
   /**
@@ -608,9 +425,8 @@ export class UpstoxAPI {
     }
 
     try {
-      const url = 'https://api.upstox.com/v2/portfolio/long-term-holdings';
-
-      const response = await axios.get(url, {
+      // Use proxy route to avoid CORS issues
+      const response = await axios.get('/api/holdings', {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Accept': 'application/json'

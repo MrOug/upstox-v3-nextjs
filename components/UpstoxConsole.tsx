@@ -6,6 +6,7 @@ import { INSTRUMENTS, INCORPORATION_DATES, COMPANY_FULL_NAMES, NIFTY_50, NIFTY_N
 import { getChineseZodiac, calculateLifePath, calculatePersonalYear, calculatePersonalMonth, normalizeMonthYear } from '@/lib/numerology';
 import { parseCSV, parseCSVLine, parseStockCSV, downloadCSV } from '@/lib/dataProcessing';
 import { StockChart } from './StockChart';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface StockResult {
   symbol: string;
@@ -798,15 +799,17 @@ export function UpstoxConsole() {
       </div>
 
       {showChart && (
-        <StockChart
-          instrumentKey={chartInstrumentKey}
-          symbol={chartSearchQuery.toUpperCase() || chartInstrumentKey.split('|').pop()?.replace('_', ' ') || 'Stock'}
-          companyName={COMPANY_FULL_NAMES[chartSearchQuery.toUpperCase()] || chartSearchQuery.toUpperCase() || 'Company'}
-          incorporationDate={chartIncorpDate}
-          dateRange={chartDateRange}
-          accessToken={upstoxApi.getAccessToken() || ''}
-          onClose={() => setShowChart(false)}
-        />
+        <ErrorBoundary fallbackTitle="Chart crashed — try a different date range or interval">
+          <StockChart
+            instrumentKey={chartInstrumentKey}
+            symbol={chartSearchQuery.toUpperCase() || chartInstrumentKey.split('|').pop()?.replace('_', ' ') || 'Stock'}
+            companyName={COMPANY_FULL_NAMES[chartSearchQuery.toUpperCase()] || chartSearchQuery.toUpperCase() || 'Company'}
+            incorporationDate={chartIncorpDate}
+            dateRange={chartDateRange}
+            accessToken={upstoxApi.getAccessToken() || ''}
+            onClose={() => setShowChart(false)}
+          />
+        </ErrorBoundary>
       )}
     </>
   );
