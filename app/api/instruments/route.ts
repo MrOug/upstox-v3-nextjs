@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { INSTRUMENTS as STATIC_INSTRUMENTS } from '@/lib/constants';
 
 let cachedInstruments: Record<string, string> | null = null;
 let cacheLoadTime: number = 0;
@@ -71,21 +72,15 @@ export async function GET(request: Request) {
       }
     });
   } catch (error: any) {
-    const fallback = {
-      'RELIANCE': 'NSE_EQ|INE002A01018',
-      'TCS': 'NSE_EQ|INE467B01029',
-      'HDFCBANK': 'NSE_EQ|INE040A01034',
-      'INFY': 'NSE_EQ|INE009A01021',
-      'ICICIBANK': 'NSE_EQ|INE090A01021'
-    };
-    
+    // Fallback to full NSE_EQ instrument map from constants
+    console.warn('Falling back to static NSE_EQ instrument map:', error.message);
     return NextResponse.json({
-      map: fallback,
+      map: STATIC_INSTRUMENTS.NSE_EQ,
       metadata: {
         exchange,
-        count: 5,
+        count: Object.keys(STATIC_INSTRUMENTS.NSE_EQ).length,
         timestamp: new Date().toISOString(),
-        source: 'fallback',
+        source: 'static_fallback',
         error: error.message
       }
     });
