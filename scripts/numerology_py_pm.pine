@@ -50,8 +50,8 @@ _sumDigits(int num) =>
 _isMaster(int num) => array.includes(MASTER_NUMBERS, num)
 
 _reduce(int num) =>
-    result = num
-    safety = 0
+    int result = num
+    int safety = 0
     while result > 9 and not _isMaster(result) and safety < 5
         result := _sumDigits(result)
         safety += 1
@@ -59,27 +59,25 @@ _reduce(int num) =>
 
 _getMonthName(int m) => array.get(MONTH_SHORT, m - 1)
 
-// Chinese zodiac: cycle repeats every 12 years, 1900 was Rat (index 0)
-// 1900: Rat, 1901: Ox, 1902: Tiger, 1903: Rabbit etc.
-// Formula: (year - 1900) % 12
+// Chinese zodiac: (year - 1900) % 12, 1900 = Rat
 _getZodiacStr(int year) => array.get(ZODIAC_ANIMALS, (year - 1900) % 12)
 
 // ============================================
 // NUMEROLOGY CALCULATIONS
 // ============================================
 _calcLifePath(int d, int m, int y) =>
-    total = float(d + m)
-    yStr = str.tostring(y)
+    float total = float(d + m)
+    string yStr = str.tostring(y)
     for i = 0 to str.length(yStr) - 1
         total := total + str.tonumber(str.substring(yStr, i, i + 1))
     _reduce(int(total))
 
 _calcPY(int incD, int incM, int targetM, int targetY) =>
-    yearToUse = targetM >= incM ? targetY : targetY - 1
+    int yearToUse = targetM >= incM ? targetY : targetY - 1
     _reduce(incD + incM + _sumDigits(yearToUse))
 
 _calcPM(int incD, int incM, int targetM, int targetY) =>
-    yearToUse = targetM >= incM ? targetY : targetY - 1
+    int yearToUse = targetM >= incM ? targetY : targetY - 1
     _reduce(incD + incM + targetM + _sumDigits(yearToUse))
 
 // ============================================
@@ -106,28 +104,28 @@ var string zodiac = ""
 // ============================================
 // MAIN CALCULATION (every bar)
 // ============================================
-thisPY = _calcPY(incDay, incMonth, month, year)
-thisPM = _calcPM(incDay, incMonth, month, year)
-curPY := thisPY
-curPM := thisPM
+int thisPY = _calcPY(incDay, incMonth, month, year)
+int thisPM = _calcPM(incDay, incMonth, month, year)
+curPY := float(thisPY)
+curPM := float(thisPM)
 
-barReturn = close[1] != 0 ? (close - close[1]) / close[1] * 100 : 0
+float barReturn = close[1] != 0 ? (close - close[1]) / close[1] * 100 : 0.0
 
 if useHistoricalScoring
     barCnt := barCnt + 1
 
-    pyIdx = array.indexof(pyVals, thisPY)
+    int pyIdx = array.indexof(pyVals, thisPY)
     if pyIdx == -1
-        array.push(pyVals, thisPY)
+        array.push(pyVals, float(thisPY))
         array.push(pySums, barReturn)
         array.push(pyCnts, 1)
     else
         array.set(pySums, pyIdx, array.get(pySums, pyIdx) + barReturn)
         array.set(pyCnts, pyIdx, array.get(pyCnts, pyIdx) + 1)
 
-    pmIdx = array.indexof(pmVals, thisPM)
+    int pmIdx = array.indexof(pmVals, thisPM)
     if pmIdx == -1
-        array.push(pmVals, thisPM)
+        array.push(pmVals, float(thisPM))
         array.push(pmSums, barReturn)
         array.push(pmCnts, 1)
     else
@@ -144,100 +142,100 @@ if useHistoricalScoring
 if barstate.islast and useHistoricalScoring
     if barCnt >= minLookbackBars
         // --- PY Score ---
-        bestAvg = -1e10
-        worstAvg = 1e10
-        curAvg = na
+        float bestAvg = -1e10
+        float worstAvg = 1e10
+        float curAvg = float(na)
         for i = 0 to array.size(pyVals) - 1
-            cnt = array.get(pyCnts, i)
+            int cnt = array.get(pyCnts, i)
             if cnt >= scoreConfidenceMin
-                avg = array.get(pySums, i) / cnt
-                val = array.get(pyVals, i)
+                float avg = array.get(pySums, i) / cnt
+                float val = array.get(pyVals, i)
                 if avg > bestAvg
                     bestAvg := avg
                 if avg < worstAvg
                     worstAvg := avg
-                if val == thisPY
+                if val == float(thisPY)
                     curAvg := avg
         if na(curAvg) or bestAvg == worstAvg
-            pyScore := 50
+            pyScore := 50.0
         else
-            raw = (curAvg - worstAvg) / (bestAvg - worstAvg) * 100
-            curCnt = 0
+            float raw = (curAvg - worstAvg) / (bestAvg - worstAvg) * 100.0
+            int curCnt = 0
             for i = 0 to array.size(pyVals) - 1
-                if array.get(pyVals, i) == thisPY
+                if array.get(pyVals, i) == float(thisPY)
                     curCnt := array.get(pyCnts, i)
-            conf = math.min(curCnt / scoreConfidenceMin, 1.0)
-            pyScore := math.round(raw * conf + 50 * (1 - conf))
+            float conf = math.min(float(curCnt) / float(scoreConfidenceMin), 1.0)
+            pyScore := math.round(raw * conf + 50.0 * (1.0 - conf))
 
         // --- PM Score ---
-        bestAvg2 = -1e10
-        worstAvg2 = 1e10
-        curAvg2 = na
+        float bestAvg2 = -1e10
+        float worstAvg2 = 1e10
+        float curAvg2 = float(na)
         for i = 0 to array.size(pmVals) - 1
-            cnt = array.get(pmCnts, i)
+            int cnt = array.get(pmCnts, i)
             if cnt >= scoreConfidenceMin
-                avg = array.get(pmSums, i) / cnt
-                val = array.get(pmVals, i)
+                float avg = array.get(pmSums, i) / cnt
+                float val = array.get(pmVals, i)
                 if avg > bestAvg2
                     bestAvg2 := avg
                 if avg < worstAvg2
                     worstAvg2 := avg
-                if val == thisPM
+                if val == float(thisPM)
                     curAvg2 := avg
         if na(curAvg2) or bestAvg2 == worstAvg2
-            pmScore := 50
+            pmScore := 50.0
         else
-            raw2 = (curAvg2 - worstAvg2) / (bestAvg2 - worstAvg2) * 100
-            curCnt2 = 0
+            float raw2 = (curAvg2 - worstAvg2) / (bestAvg2 - worstAvg2) * 100.0
+            int curCnt2 = 0
             for i = 0 to array.size(pmVals) - 1
-                if array.get(pmVals, i) == thisPM
+                if array.get(pmVals, i) == float(thisPM)
                     curCnt2 := array.get(pmCnts, i)
-            conf2 = math.min(curCnt2 / scoreConfidenceMin, 1.0)
-            pmScore := math.round(raw2 * conf2 + 50 * (1 - conf2))
+            float conf2 = math.min(float(curCnt2) / float(scoreConfidenceMin), 1.0)
+            pmScore := math.round(raw2 * conf2 + 50.0 * (1.0 - conf2))
 
         // Combined
-        combScore := na(pyScore) or na(pmScore) ? 50 : math.round(pyScore * 0.55 + pmScore * 0.45)
+        combScore := na(pyScore) or na(pmScore) ? 50.0 : math.round(pyScore * 0.55 + pmScore * 0.45)
 
         // Label
-        recLabel := combScore >= 70 ? "STRONG BUY" : combScore >= 50 ? "BUY" : combScore >= 30 ? "NEUTRAL" : "AVOID"
+        recLabel := combScore >= 70.0 ? "STRONG BUY" : combScore >= 50.0 ? "BUY" : combScore >= 30.0 ? "NEUTRAL" : "AVOID"
 
         // Summary
         recSummary := ""
-        if combScore >= 50
-            pi = array.indexof(pyVals, thisPY)
+        if combScore >= 50.0
+            int pi = array.indexof(pyVals, float(thisPY))
             if pi != -1 and array.get(pyCnts, pi) >= 2
-                avgR = array.get(pySums, pi) / array.get(pyCnts, pi)
+                float avgR = array.get(pySums, pi) / array.get(pyCnts, pi)
                 recSummary := "PY " + str.tostring(thisPY, "#") + " avg " + str.tostring(avgR, "#.##") + "%"
-            pi2 = array.indexof(pmVals, thisPM)
+            int pi2 = array.indexof(pmVals, float(thisPM))
             if pi2 != -1 and array.get(pmCnts, pi2) >= 2
-                avgR2 = array.get(pmSums, pi2) / array.get(pmCnts, pi2)
+                float avgR2 = array.get(pmSums, pi2) / array.get(pmCnts, pi2)
                 if recSummary != ""
                     recSummary := recSummary + " | "
                 recSummary := recSummary + "PM " + str.tostring(thisPM, "#") + " avg " + str.tostring(avgR2, "#.##") + "%"
-        if combScore < 50
+        if combScore < 50.0
             recSummary := "Weak historical performance in current cycle"
     else
-        pyScore := 50
-        pmScore := 50
-        combScore := 50
+        pyScore := 50.0
+        pmScore := 50.0
+        combScore := 50.0
         recLabel := "NEUTRAL"
         recSummary := "Insufficient history (" + str.tostring(barCnt) + " bars)"
 
 // ============================================
 // VISUALIZATION
 // ============================================
-lblSz = labelSize == "tiny" ? size.tiny : labelSize == "small" ? size.small : labelSize == "large" ? size.large : size.normal
-isNewMonth = ta.change(month) != 0
-isNewYear = ta.change(year) != 0
+int lblSz = labelSize == "tiny" ? size.tiny : labelSize == "small" ? size.small : labelSize == "large" ? size.large : size.normal
+bool isNewMonth = ta.change(month) != 0
+bool isNewYear = ta.change(year) != 0
 
 if showMonthLabels and isNewMonth and not isNewYear
-    pyV = _calcPY(incDay, incMonth, month, year)
-    pmV = _calcPM(incDay, incMonth, month, year)
+    int pyV = _calcPY(incDay, incMonth, month, year)
+    int pmV = _calcPM(incDay, incMonth, month, year)
     label.new(bar_index, high, "PY " + str.tostring(pyV) + " | PM " + str.tostring(pmV), style=label.style_label_down, color=pyColor, textcolor=color.white, size=lblSz)
 
 if showYearChangeLabels and isNewYear
-    pyV = _calcPY(incDay, incMonth, month, year)
-    pmV = _calcPM(incDay, incMonth, month, year)
+    int pyV = _calcPY(incDay, incMonth, month, year)
+    int pmV = _calcPM(incDay, incMonth, month, year)
     label.new(bar_index, high, "━━ " + str.tostring(year) + " ━━\nPY " + str.tostring(pyV) + " │ PM " + str.tostring(pmV), style=label.style_label_down, color=yearColor, textcolor=color.white, size=lblSz)
 
 if showSeparatorLines and isNewMonth and not isNewYear
@@ -250,10 +248,10 @@ if showSeparatorLines and isNewYear
 // SCORE & SIGNAL ON CHART
 // ============================================
 if barstate.islast and useHistoricalScoring and not na(combScore)
-    recCol = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
+    color recCol = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
 
     if showPatternLabels
-        sText = "🔮 " + recLabel + "\nScore: " + str.tostring(combScore, "#") + "/100"
+        string sText = "🔮 " + recLabel + "\nScore: " + str.tostring(combScore, "#") + "/100"
         if recSummary != ""
             sText := sText + "\n" + recSummary
         label.new(bar_index, low, sText, style=label.style_label_up, color=recCol, textcolor=color.white, size=lblSz)
@@ -282,34 +280,34 @@ if barstate.islast
     table.cell(t, 1, 4, str.tostring(curPM, "#"), text_color=color.white, bgcolor=pmColor, text_size=size.large, text_halign=text.align_center)
 
     if useHistoricalScoring and not na(combScore)
-        rc2 = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
+        color rc2 = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
         table.cell(t, 0, 5, "Score", text_color=color.white, bgcolor=color.new(rc2, 50), text_size=size.normal)
-        table.cell(t, 1, 5, str.tostring(combScore, "#") + "/100", text_color=color.white, bgcolor=rc2, text_size=size.large, text_halign=text.align_center)
-        rIcon = recLabel == "STRONG BUY" ? "🔥 " : recLabel == "BUY" ? "✅ " : recLabel == "NEUTRAL" ? "⚖️ " : "⚠️ "
+        table.cell(t, 1, 5, str.tostring(math.round(combScore), "#") + "/100", text_color=color.white, bgcolor=rc2, text_size=size.large, text_halign=text.align_center)
+        string rIcon = recLabel == "STRONG BUY" ? "🔥 " : recLabel == "BUY" ? "✅ " : recLabel == "NEUTRAL" ? "⚖️ " : "⚠️ "
         table.cell(t, 0, 6, "Recommendation", text_color=color.white, bgcolor=color.new(rc2, 40), text_size=size.small)
         table.cell(t, 1, 6, rIcon + recLabel, text_color=color.white, bgcolor=rc2, text_size=size.normal, text_halign=text.align_center)
         if recSummary != ""
             table.cell(t, 0, 7, "Detail", text_color=color.gray, text_size=size.tiny)
             table.cell(t, 1, 7, recSummary, text_color=color.gray, text_size=size.tiny)
-        bpy = 0
-        bpyR = -1e10
+        float bpy = 0.0
+        float bpyR = -1e10
         for i = 0 to array.size(pyVals) - 1
             if array.get(pyCnts, i) >= scoreConfidenceMin
-                avgR = array.get(pySums, i) / array.get(pyCnts, i)
+                float avgR = array.get(pySums, i) / float(array.get(pyCnts, i))
                 if avgR > bpyR
                     bpyR := avgR
                     bpy := array.get(pyVals, i)
-        bpm = 0
-        bpmR = -1e10
+        float bpm = 0.0
+        float bpmR = -1e10
         for i = 0 to array.size(pmVals) - 1
             if array.get(pmCnts, i) >= scoreConfidenceMin
-                avgR = array.get(pmSums, i) / array.get(pmCnts, i)
+                float avgR = array.get(pmSums, i) / float(array.get(pmCnts, i))
                 if avgR > bpmR
                     bpmR := avgR
                     bpm := array.get(pmVals, i)
         if bpyR > -1e9 and bpmR > -1e9
             table.cell(t, 0, 8, "Best PY/PM", text_color=color.gray, text_size=size.tiny)
-            table.cell(t, 1, 8, "PY " + str.tostring(bpy, "#") + " (+" + str.tostring(bpyR, "#.##") + "%) · PM " + str.tostring(bpm, "#") + " (+" + str.tostring(bpmR, "#.##") + "%)", text_color=color.gray, text_size=size.tiny)
+            table.cell(t, 1, 8, "PY " + str.tostring(int(bpy), "#") + " (+" + str.tostring(bpyR, "#.##") + "%) · PM " + str.tostring(int(bpm), "#") + " (+" + str.tostring(bpmR, "#.##") + "%)", text_color=color.gray, text_size=size.tiny)
 
 // ============================================
 // PLOTS & ALERTS
