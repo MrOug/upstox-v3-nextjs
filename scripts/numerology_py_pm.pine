@@ -144,7 +144,9 @@ if useHistoricalScoring
 if barstate.islast and useHistoricalScoring
     if barCnt >= minLookbackBars
         // --- PY Score ---
-        bestAvg = -1e10; worstAvg = 1e10; curAvg = na
+        bestAvg = -1e10
+        worstAvg = 1e10
+        curAvg = na
         for i = 0 to array.size(pyVals) - 1
             cnt = array.get(pyCnts, i)
             if cnt >= scoreConfidenceMin
@@ -168,7 +170,9 @@ if barstate.islast and useHistoricalScoring
             pyScore := math.round(raw * conf + 50 * (1 - conf))
 
         // --- PM Score ---
-        bestAvg2 = -1e10; worstAvg2 = 1e10; curAvg2 = na
+        bestAvg2 = -1e10
+        worstAvg2 = 1e10
+        curAvg2 = na
         for i = 0 to array.size(pmVals) - 1
             cnt = array.get(pmCnts, i)
             if cnt >= scoreConfidenceMin
@@ -213,7 +217,9 @@ if barstate.islast and useHistoricalScoring
         if combScore < 50
             recSummary := "Weak historical performance in current cycle"
     else
-        pyScore := 50; pmScore := 50; combScore := 50
+        pyScore := 50
+        pmScore := 50
+        combScore := 50
         recLabel := "NEUTRAL"
         recSummary := "Insufficient history (" + str.tostring(barCnt) + " bars)"
 
@@ -285,18 +291,22 @@ if barstate.islast
         if recSummary != ""
             table.cell(t, 0, 7, "Detail", text_color=color.gray, text_size=size.tiny)
             table.cell(t, 1, 7, recSummary, text_color=color.gray, text_size=size.tiny)
-        bpy = 0; bpyR = -1e10
+        bpy = 0
+        bpyR = -1e10
         for i = 0 to array.size(pyVals) - 1
             if array.get(pyCnts, i) >= scoreConfidenceMin
                 avgR = array.get(pySums, i) / array.get(pyCnts, i)
                 if avgR > bpyR
-                    bpyR := avgR; bpy := array.get(pyVals, i)
-        bpm = 0; bpmR = -1e10
+                    bpyR := avgR
+                    bpy := array.get(pyVals, i)
+        bpm = 0
+        bpmR = -1e10
         for i = 0 to array.size(pmVals) - 1
             if array.get(pmCnts, i) >= scoreConfidenceMin
                 avgR = array.get(pmSums, i) / array.get(pmCnts, i)
                 if avgR > bpmR
-                    bpmR := avgR; bpm := array.get(pmVals, i)
+                    bpmR := avgR
+                    bpm := array.get(pmVals, i)
         if bpyR > -1e9 and bpmR > -1e9
             table.cell(t, 0, 8, "Best PY/PM", text_color=color.gray, text_size=size.tiny)
             table.cell(t, 1, 8, "PY " + str.tostring(bpy, "#") + " (+" + str.tostring(bpyR, "#.##") + "%) · PM " + str.tostring(bpm, "#") + " (+" + str.tostring(bpmR, "#.##") + "%)", text_color=color.gray, text_size=size.tiny)
