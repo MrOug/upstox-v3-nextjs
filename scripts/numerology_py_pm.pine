@@ -68,11 +68,11 @@ _getZodiacStr(int year) => array.get(ZODIAC_ANIMALS, (year - 1900) % 12)
 // NUMEROLOGY CALCULATIONS
 // ============================================
 _calcLifePath(int d, int m, int y) =>
-    total = d + m
+    total = float(d + m)
     yStr = str.tostring(y)
     for i = 0 to str.length(yStr) - 1
         total := total + str.tonumber(str.substring(yStr, i, i + 1))
-    _reduce(total)
+    _reduce(int(total))
 
 _calcPY(int incD, int incM, int targetM, int targetY) =>
     yearToUse = targetM >= incM ? targetY : targetY - 1
