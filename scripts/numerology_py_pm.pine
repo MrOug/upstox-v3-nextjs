@@ -114,7 +114,7 @@ float barReturn = close[1] != 0 ? (close - close[1]) / close[1] * 100 : 0.0
 if useHistoricalScoring
     barCnt := barCnt + 1
 
-    int pyIdx = array.indexof(pyVals, thisPY)
+    int pyIdx = array.indexof(pyVals, float(thisPY))
     if pyIdx == -1
         array.push(pyVals, float(thisPY))
         array.push(pySums, barReturn)
@@ -123,7 +123,7 @@ if useHistoricalScoring
         array.set(pySums, pyIdx, array.get(pySums, pyIdx) + barReturn)
         array.set(pyCnts, pyIdx, array.get(pyCnts, pyIdx) + 1)
 
-    int pmIdx = array.indexof(pmVals, thisPM)
+    int pmIdx = array.indexof(pmVals, float(thisPM))
     if pmIdx == -1
         array.push(pmVals, float(thisPM))
         array.push(pmSums, barReturn)
