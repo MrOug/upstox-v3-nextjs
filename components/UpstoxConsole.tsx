@@ -3,24 +3,11 @@
 import { useState, useEffect } from 'react';
 import { upstoxApi } from '@/lib/upstoxApi';
 import { INSTRUMENTS, INCORPORATION_DATES, COMPANY_FULL_NAMES, NIFTY_50, NIFTY_NEXT_50, BANK_NIFTY, SENSEX, SECTOR_STOCKS } from '@/lib/constants';
-import { getChineseZodiac, calculateLifePath, calculatePersonalYear, calculatePersonalMonth, normalizeMonthYear } from '@/lib/numerology';
+import { getChineseZodiac, calculateLifePath, calculatePersonalYear, calculatePersonalMonth, normalizeMonthYear, analyzeNumerologyPatterns } from '@/lib/numerology';
 import { parseCSV, parseCSVLine, parseStockCSV, downloadCSV } from '@/lib/dataProcessing';
 import { StockChart } from './StockChart';
 import { ErrorBoundary } from './ErrorBoundary';
-
-interface StockResult {
-  symbol: string;
-  companyName: string;
-  incorporationDate: string;
-  latestPrice: string;
-  oldestPrice: string;
-  highPrice: string;
-  lowPrice: string;
-  change: string;
-  percentChange: string;
-  dataPoints: number;
-  monthlyData?: any[];
-}
+import type { StockResult, NumerologyRecommendation, MonthlyData } from '@/lib/types';
 
 export function UpstoxConsole() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
@@ -289,25 +276,43 @@ export function UpstoxConsole() {
           const change = latest - oldest;
           const pct = ((change / oldest) * 100).toFixed(2);
 
-          let monthly: any[] = [];
+          let monthly: MonthlyData[] = [];
+          const incorpDate = INCORPORATION_DATES[symbol] || 'N/A';
           if (interval === 'months/1') {
-            monthly = candles.map((c: any) => ({
-              date: new Date(c[0]).toLocaleDateString('en-IN', {
-                year: 'numeric',
-                month: 'short'
-              }),
-              open: c[1].toFixed(2),
-              close: c[4].toFixed(2),
-              high: c[2].toFixed(2),
-              low: c[3].toFixed(2),
-              change: ((c[4] - c[1]) / c[1] * 100).toFixed(2)
-            })).reverse();
+            monthly = candles.map((c: any) => {
+              const candleDate = new Date(c[0]);
+              const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              const dateLabel = `${monthNames[candleDate.getMonth()]} ${candleDate.getFullYear()}`;
+              let py = 0, pm = 0;
+              if (incorpDate !== 'N/A') {
+                try {
+                  py = calculatePersonalYear(incorpDate, dateLabel);
+                  pm = calculatePersonalMonth(incorpDate, dateLabel);
+                } catch (_) {}
+              }
+              return {
+                date: dateLabel,
+                open: c[1].toFixed(2),
+                close: c[4].toFixed(2),
+                high: c[2].toFixed(2),
+                low: c[3].toFixed(2),
+                change: ((c[4] - c[1]) / c[1] * 100).toFixed(2),
+                py,
+                pm,
+              };
+            }).reverse();
+          }
+
+          // Run numerology pattern analysis on monthly data
+          let recommendation: NumerologyRecommendation | undefined;
+          if (monthly.length >= 3 && incorpDate !== 'N/A') {
+            recommendation = analyzeNumerologyPatterns(monthly, incorpDate) ?? undefined;
           }
 
           results.push({
             symbol,
             companyName: COMPANY_FULL_NAMES[symbol] || symbol,
-            incorporationDate: INCORPORATION_DATES[symbol] || 'N/A',
+            incorporationDate: incorpDate,
             latestPrice: latest.toFixed(2),
             oldestPrice: oldest.toFixed(2),
             highPrice: high.toFixed(2),
@@ -315,7 +320,8 @@ export function UpstoxConsole() {
             change: change.toFixed(2),
             percentChange: pct,
             dataPoints: candles.length,
-            monthlyData: monthly
+            monthlyData: monthly,
+            recommendation,
           });
 
           log(`✓ ${symbol}: ${pct}%`);
@@ -741,6 +747,31 @@ export function UpstoxConsole() {
             <span style={{ color: 'var(--text-dim)' }}>{stockResults.length} Objects</span>
           </div>
           <div style={{ padding: 0, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            {stockResults.length > 0 && (() => {
+              const withRec = stockResults.filter(s => s.recommendation);
+              const counts: Record<string, number> = {};
+              for (const s of withRec) {
+                if (s.recommendation) counts[s.recommendation.label] = (counts[s.recommendation.label] || 0) + 1;
+              }
+              const strongBuyCount = counts['STRONG BUY'] || 0;
+              const buyCount = counts['BUY'] || 0;
+              const neutralCount = counts['NEUTRAL'] || 0;
+              const avoidCount = counts['AVOID'] || 0;
+              return (
+                <div style={{ padding: '10px 15px', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', fontSize: '11px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '10px', color: 'var(--text-dim)' }}>🔮 Numerology Recs</span>
+                    {strongBuyCount > 0 && <span style={{ color: '#00c853', fontWeight: 700 }}>● STRONG BUY {strongBuyCount}</span>}
+                    {buyCount > 0 && <span style={{ color: '#64dd17', fontWeight: 700 }}>● BUY {buyCount}</span>}
+                    {neutralCount > 0 && <span style={{ color: '#ffd600', fontWeight: 700 }}>● NEUTRAL {neutralCount}</span>}
+                    {avoidCount > 0 && <span style={{ color: '#ff1744', fontWeight: 700 }}>● AVOID {avoidCount}</span>}
+                    <span style={{ color: 'var(--text-dim)', fontSize: '10px', marginLeft: 'auto' }}>
+                      {withRec.length}/{stockResults.length} scored · Monthly data required
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="results-grid">
               {stockResults.length === 0 ? (
                 <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px', color: 'var(--text-dim)', border: '1px dashed var(--border)', margin: '20px' }}>
@@ -749,14 +780,34 @@ export function UpstoxConsole() {
               ) : (
                 stockResults.map((stock, idx) => {
                   const changeClass = parseFloat(stock.percentChange) >= 0 ? 'pos' : 'neg';
+                  const rec = stock.recommendation;
+                  const recColors: Record<string, string> = {
+                    'STRONG BUY': '#00c853', 'BUY': '#64dd17',
+                    'NEUTRAL': '#ffd600', 'AVOID': '#ff1744',
+                  };
+                  const recBgColors: Record<string, string> = {
+                    'STRONG BUY': '#00c85322', 'BUY': '#64dd1722',
+                    'NEUTRAL': '#ffd60022', 'AVOID': '#ff174422',
+                  };
                   return (
-                    <div key={idx} className="tech-card">
-                      <div className="card-top">
-                        <div>
+                    <div key={idx} className="tech-card" style={rec ? { borderColor: recColors[rec.label] || 'var(--border)' } : {}}>
+                      <div className="card-top" style={rec ? { borderBottomColor: recColors[rec.label] || 'var(--border)' } : {}}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <span className="symbol-title">{stock.symbol}</span>
                           <span className="company-name">{stock.companyName}</span>
                         </div>
-                        <span className={`badge ${changeClass}`}>{stock.percentChange}%</span>
+                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
+                          {rec && (
+                            <span style={{
+                              fontSize: '9px', fontWeight: 700, padding: '2px 8px', borderRadius: '10px',
+                              color: '#fff', background: recColors[rec.label] || '#888',
+                              letterSpacing: '0.5px',
+                            }}>
+                              {rec.label === 'STRONG BUY' ? '🔥 ' : ''}{rec.label}
+                            </span>
+                          )}
+                          <span className={`badge ${changeClass}`}>{stock.percentChange}%</span>
+                        </div>
                       </div>
                       <div className="card-metrics">
                         <div>
@@ -775,6 +826,31 @@ export function UpstoxConsole() {
                           <span className="metric-label">LOW</span>
                           <span className="metric-val">₹{stock.lowPrice}</span>
                         </div>
+                        {rec && (
+                          <>
+                            <div>
+                              <span className="metric-label">LIFE PATH</span>
+                              <span className="metric-val">{rec.lifePath} · {rec.companyZodiac}</span>
+                            </div>
+                            <div>
+                              <span className="metric-label">PY/PM</span>
+                              <span className="metric-val" style={{ color: recColors[rec.label] || 'var(--text)' }}>
+                                PY {rec.currentPY} · PM {rec.currentPM}
+                              </span>
+                            </div>
+                            <div style={{ gridColumn: '1/-1' }}>
+                              <div style={{
+                                display: 'flex', gap: '6px', alignItems: 'center',
+                                marginTop: '4px', padding: '6px 8px', borderRadius: '4px',
+                                background: recBgColors[rec.label] || 'var(--bg-panel)',
+                                fontSize: '9px', lineHeight: '1.4',
+                              }}>
+                                {rec.label === 'STRONG BUY' && <span style={{ fontSize: '14px' }}>🔥</span>}
+                                <span style={{ color: 'var(--text-dim)' }}>{rec.summary}</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                       {stock.monthlyData && stock.monthlyData.length > 0 && (
                         <table className="mini-table">
