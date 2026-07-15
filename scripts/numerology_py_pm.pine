@@ -1,71 +1,31 @@
-// This Pine Script™ is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © Numerology PY/PM Pro v2 — Pattern Analysis & Recommendation Engine
-// v2.0 — Adds historical pattern scoring + STRONG BUY/BUY/NEUTRAL/AVOID signals
-
 //@version=5
 indicator("Numerology PY/PM Pro v2", overlay=true, max_labels_count=500, max_lines_count=500, max_bars_back=5000)
 
 // ============================================
 // CONSTANTS
 // ============================================
-
-// Master numbers that don't reduce further
 MASTER_NUMBERS = array.from(11, 22, 28, 33, 20)
-
-// Month name map
 MONTH_SHORT = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-// Chinese zodiac animals
 ZODIAC_ANIMALS = array.from("Rat", "Ox", "Tiger", "Rabbit", "Dragon", "Snake", "Horse", "Goat", "Monkey", "Rooster", "Dog", "Pig")
-
-// Chinese New Year cutover dates (MM-DD) for 1924-2040
-CNY_DATES = array.from(
-  "1924-02-05", "1925-01-24", "1926-02-13", "1927-02-02", "1928-01-23", "1929-02-10",
-  "1930-01-30", "1931-02-17", "1932-02-06", "1933-01-26", "1934-02-14", "1935-02-04",
-  "1936-01-24", "1937-02-11", "1938-01-31", "1939-02-19", "1940-02-08", "1941-01-27",
-  "1942-02-15", "1943-02-05", "1944-01-25", "1945-02-13", "1946-02-02", "1947-01-22",
-  "1948-02-10", "1949-01-29", "1950-02-17", "1951-02-06", "1952-01-27", "1953-02-14",
-  "1954-02-03", "1955-01-24", "1956-02-12", "1957-01-31", "1958-02-18", "1959-02-08",
-  "1960-01-28", "1961-02-15", "1962-02-05", "1963-01-25", "1964-02-13", "1965-02-02",
-  "1966-01-21", "1967-02-09", "1968-01-30", "1969-02-17", "1970-02-06", "1971-01-27",
-  "1972-02-15", "1973-02-03", "1974-01-23", "1975-02-11", "1976-01-31", "1977-02-18",
-  "1978-02-07", "1979-01-28", "1980-02-16", "1981-02-05", "1982-01-25", "1983-02-13",
-  "1984-02-02", "1985-02-20", "1986-02-09", "1987-01-29", "1988-02-17", "1989-02-06",
-  "1990-01-27", "1991-02-15", "1992-02-04", "1993-01-23", "1994-02-10", "1995-01-31",
-  "1996-02-19", "1997-02-07", "1998-01-28", "1999-02-16", "2000-02-05", "2001-01-24",
-  "2002-02-12", "2003-02-01", "2004-01-22", "2005-02-09", "2006-01-29", "2007-02-18",
-  "2008-02-07", "2009-01-26", "2010-02-14", "2011-02-03", "2012-01-23", "2013-02-10",
-  "2014-01-31", "2015-02-19", "2016-02-08", "2017-01-28", "2018-02-16", "2019-02-05",
-  "2020-01-25", "2021-02-12", "2022-02-01", "2023-01-22", "2024-02-10", "2025-01-29",
-  "2026-02-17", "2027-02-06", "2028-01-26", "2029-02-13", "2030-02-03", "2031-01-23",
-  "2032-02-11", "2033-01-31", "2034-02-19", "2035-02-08", "2036-01-28", "2037-02-15",
-  "2038-02-04", "2039-01-24", "2040-02-12"
-)
 
 // ============================================
 // INPUTS
 // ============================================
-
-// Date of Incorporation
 incDay = input.int(1, "Day", minval=1, maxval=31, inline="inc", group="📅 Date of Incorporation")
 incMonth = input.int(1, "Month", minval=1, maxval=12, inline="inc", group="📅 Date of Incorporation")
 incYear = input.int(2000, "Year", minval=1900, maxval=2100, inline="inc", group="📅 Date of Incorporation")
 
-// Scoring mode
 useHistoricalScoring = input.bool(true, "Enable Pattern Scoring", group="📊 Scoring Engine")
 minLookbackBars = input.int(60, "Min History (bars)", minval=20, maxval=5000, group="📊 Scoring Engine")
 scoreConfidenceMin = input.int(2, "Min Samples for Confidence", minval=1, maxval=50, group="📊 Scoring Engine")
 
-// Display Options
 showMonthLabels = input.bool(true, "Show Monthly PY/PM Labels", group="🎨 Display")
 showYearChangeLabels = input.bool(true, "Show Year Change Labels", group="🎨 Display")
 showSeparatorLines = input.bool(true, "Show Separator Lines", group="🎨 Display")
 showPatternLabels = input.bool(true, "Show Score Labels on Chart", group="🎨 Display")
 showRecOnChart = input.bool(true, "Show Recommendation Signal", group="🎨 Display")
 labelSize = input.string("small", "Label Size", options=["tiny", "small", "normal", "large"], group="🎨 Display")
-scoreToPlot = input.string("py", "Score to Plot", options=["py", "pm", "combined"], group="🎨 Display")
 
-// Colors
 pyColor = input.color(#2196F3, "PY Color", group="🎨 Colors")
 pmColor = input.color(#9C27B0, "PM Color", group="🎨 Colors")
 yearColor = input.color(#FF5722, "Year Label Color", group="🎨 Colors")
@@ -77,428 +37,281 @@ neutralColor = input.color(color.new(#ffd600, 0), "NEUTRAL Color", group="🎨 C
 avoidColor = input.color(color.new(#ff1744, 0), "AVOID Color", group="🎨 Colors")
 
 // ============================================
-// NUMEROLOGY CORE FUNCTIONS
+// CORE HELPERS
 // ============================================
-
-// Sum digits of a positive integer
-sumDigits(int num) =>
-    int d1 = num % 10
-    int d2 = math.floor(num / 10) % 10
-    int d3 = math.floor(num / 100) % 10
-    int d4 = math.floor(num / 1000) % 10
-    int d5 = math.floor(num / 10000) % 10
+_sumDigits(int num) =>
+    d1 = num % 10
+    d2 = math.floor(num / 10) % 10
+    d3 = math.floor(num / 100) % 10
+    d4 = math.floor(num / 1000) % 10
+    d5 = math.floor(num / 10000) % 10
     d1 + d2 + d3 + d4 + d5
 
-// Check if a number is a master number
-isMasterNumber(int num) =>
-    array.includes(MASTER_NUMBERS, num)
+_isMaster(int num) => array.includes(MASTER_NUMBERS, num)
 
-// Reduce a number to a single digit (preserving master numbers)
-reduceNumber(int num) =>
-    int result = num
-    int safety = 0
-    while result > 9 and not isMasterNumber(result) and safety < 5
-        result := sumDigits(result)
+_reduce(int num) =>
+    result = num
+    safety = 0
+    while result > 9 and not _isMaster(result) and safety < 5
+        result := _sumDigits(result)
         safety += 1
     result
 
-// Get Chinese Zodiac animal from a date
-getZodiac(int d, int m, int y) =>
-    // Find the Chinese New Year date for this year
-    string cnyStr = na
-    int zodiacAnimal = na
-    for i = 0 to array.size(CNY_DATES) - 1
-        string entry = array.get(CNY_DATES, i)
-        if str.tonumber(str.substring(entry, 0, 4)) == y
-            cnyStr := entry
-            break
-    // If CNY found, check if date is before CNY
-    int chineseYear = y
-    if not na(cnyStr)
-        int cnyMonth = str.tonumber(str.substring(cnyStr, 5, 7))
-        int cnyDay = str.tonumber(str.substring(cnyStr, 8, 10))
-        if m < cnyMonth or (m == cnyMonth and d < cnyDay)
-            chineseYear := y - 1
-    // 1924 is the start of a Rat year (index 0)
-    int yearIndex = (chineseYear - 1924) % 12
-    if yearIndex < 0
-        yearIndex := yearIndex + 12
-    array.get(ZODIAC_ANIMALS, yearIndex)
+_getMonthName(int m) => array.get(MONTH_SHORT, m - 1)
 
-// Calculate Life Path number from incorporation date
-calcLifePath(int d, int m, int y) =>
-    int total = d + m
-    string yStr = str.tostring(y)
+// Chinese zodiac: cycle repeats every 12 years, 1900 was Rat (index 0)
+// 1900: Rat, 1901: Ox, 1902: Tiger, 1903: Rabbit etc.
+// Formula: (year - 1900) % 12
+_getZodiacStr(int year) => array.get(ZODIAC_ANIMALS, (year - 1900) % 12)
+
+// ============================================
+// NUMEROLOGY CALCULATIONS
+// ============================================
+_calcLifePath(int d, int m, int y) =>
+    total = d + m
+    yStr = str.tostring(y)
     for i = 0 to str.length(yStr) - 1
         total := total + str.tonumber(str.substring(yStr, i, i + 1))
-    reduceNumber(total)
+    _reduce(total)
 
-// Calculate Personal Year
-calcPY(int incD, int incM, int targetM, int targetY) =>
-    int yearToUse = targetM >= incM ? targetY : targetY - 1
-    int total = incD + incM + sumDigits(yearToUse)
-    reduceNumber(total)
+_calcPY(int incD, int incM, int targetM, int targetY) =>
+    yearToUse = targetM >= incM ? targetY : targetY - 1
+    _reduce(incD + incM + _sumDigits(yearToUse))
 
-// Calculate Personal Month
-calcPM(int incD, int incM, int targetM, int targetY) =>
-    int yearToUse = targetM >= incM ? targetY : targetY - 1
-    int total = incD + incM + targetM + sumDigits(yearToUse)
-    reduceNumber(total)
-
-// Get month name
-getMonthName(int m) =>
-    array.get(MONTH_SHORT, m - 1)
+_calcPM(int incD, int incM, int targetM, int targetY) =>
+    yearToUse = targetM >= incM ? targetY : targetY - 1
+    _reduce(incD + incM + targetM + _sumDigits(yearToUse))
 
 // ============================================
-// PATTERN SCORING ENGINE (persisted via var)
+// PERSISTENT STATE
 // ============================================
+var float[] pyVals = array.new_float(0)
+var float[] pySums = array.new_float(0)
+var int[] pyCnts = array.new_int(0)
+var float[] pmVals = array.new_float(0)
+var float[] pmSums = array.new_float(0)
+var int[] pmCnts = array.new_int(0)
 
-// Persistent arrays to accumulate historical data per PY and PM value
-var float[] pyValues_seen  = array.new_float(0)
-var float[] pySumReturns   = array.new_float(0)
-var int[]   pyCounts       = array.new_int(0)
+var float curPY = na
+var float curPM = na
+var float pyScore = na
+var float pmScore = na
+var float combScore = na
+var string recLabel = ""
+var string recSummary = ""
+var int barCnt = 0
+var int lifePath = 0
+var string zodiac = ""
 
-var float[] pmValues_seen  = array.new_float(0)
-var float[] pmSumReturns   = array.new_float(0)
-var int[]   pmCounts       = array.new_int(0)
+// ============================================
+// MAIN CALCULATION (every bar)
+// ============================================
+thisPY = _calcPY(incDay, incMonth, month, year)
+thisPM = _calcPM(incDay, incMonth, month, year)
+curPY := thisPY
+curPM := thisPM
 
-// Track current PY and PM for display at each bar
-var float currentPY_val = na
-var float currentPM_val = na
+barReturn = close[1] != 0 ? (close - close[1]) / close[1] * 100 : 0
 
-// Scoring results (computed at last bar)
-var float pyScore_val = na
-var float pmScore_val = na
-var float combinedScore_val = na
-var string recLabel_val = ""
-var string recSummary_val = ""
-var int barCount = 0
-var int lifePath_val = 0
-var string zodiac_val = ""
-
-// On each bar, accumulate returns per PY / PM value
 if useHistoricalScoring
-    barCount := barCount + 1
+    barCnt := barCnt + 1
 
-    // Calculate PY and PM for this bar
-    thisPY = calcPY(incDay, incMonth, month, year)
-    thisPM = calcPM(incDay, incMonth, month, year)
-    currentPY_val := thisPY
-    currentPM_val := thisPM
-
-    // Bar return (percent change from previous close)
-    barReturn = close[1] != 0 ? (close - close[1]) / close[1] * 100 : 0
-
-    // --- Accumulate PY ---
-    pyIdx = array.indexof(pyValues_seen, thisPY)
+    pyIdx = array.indexof(pyVals, thisPY)
     if pyIdx == -1
-        array.push(pyValues_seen, thisPY)
-        array.push(pySumReturns, barReturn)
-        array.push(pyCounts, 1)
+        array.push(pyVals, thisPY)
+        array.push(pySums, barReturn)
+        array.push(pyCnts, 1)
     else
-        if array.get(pyCounts, pyIdx) > 0  // guard against zero
-            array.set(pySumReturns, pyIdx, array.get(pySumReturns, pyIdx) + barReturn)
-            array.set(pyCounts, pyIdx, array.get(pyCounts, pyIdx) + 1)
+        array.set(pySums, pyIdx, array.get(pySums, pyIdx) + barReturn)
+        array.set(pyCnts, pyIdx, array.get(pyCnts, pyIdx) + 1)
 
-    // --- Accumulate PM ---
-    pmIdx = array.indexof(pmValues_seen, thisPM)
+    pmIdx = array.indexof(pmVals, thisPM)
     if pmIdx == -1
-        array.push(pmValues_seen, thisPM)
-        array.push(pmSumReturns, thisPM + barReturn)    // temp — fix below
-        array.set(pmSumReturns, array.size(pmSumReturns) - 1, barReturn)
-        array.push(pmCounts, 1)
+        array.push(pmVals, thisPM)
+        array.push(pmSums, barReturn)
+        array.push(pmCnts, 1)
     else
-        if array.get(pmCounts, pmIdx) > 0
-            array.set(pmSumReturns, pmIdx, array.get(pmSumReturns, pmIdx) + barReturn)
-            array.set(pmCounts, pmIdx, array.get(pmCounts, pmIdx) + 1)
+        array.set(pmSums, pmIdx, array.get(pmSums, pmIdx) + barReturn)
+        array.set(pmCnts, pmIdx, array.get(pmCnts, pmIdx) + 1)
 
-    // Life path + zodiac computed once at last bar
     if barstate.islast
-        lifePath_val := calcLifePath(incDay, incMonth, incYear)
-        zodiac_val := getZodiac(incDay, incMonth, incYear)
+        lifePath := _calcLifePath(incDay, incMonth, incYear)
+        zodiac := _getZodiacStr(incYear)
 
 // ============================================
-// SCORING COMPUTATION (at last bar only)
+// SCORING (last bar only)
 // ============================================
+if barstate.islast and useHistoricalScoring
+    if barCnt >= minLookbackBars
+        // --- PY Score ---
+        bestAvg = -1e10; worstAvg = 1e10; curAvg = na
+        for i = 0 to array.size(pyVals) - 1
+            cnt = array.get(pyCnts, i)
+            if cnt >= scoreConfidenceMin
+                avg = array.get(pySums, i) / cnt
+                val = array.get(pyVals, i)
+                if avg > bestAvg
+                    bestAvg := avg
+                if avg < worstAvg
+                    worstAvg := avg
+                if val == thisPY
+                    curAvg := avg
+        if na(curAvg) or bestAvg == worstAvg
+            pyScore := 50
+        else
+            raw = (curAvg - worstAvg) / (bestAvg - worstAvg) * 100
+            curCnt = 0
+            for i = 0 to array.size(pyVals) - 1
+                if array.get(pyVals, i) == thisPY
+                    curCnt := array.get(pyCnts, i)
+            conf = math.min(curCnt / scoreConfidenceMin, 1.0)
+            pyScore := math.round(raw * conf + 50 * (1 - conf))
 
-if barstate.islast and useHistoricalScoring and barCount >= minLookbackBars
-    // --- PY scoring ---
-    float bestPY_avg = -1e10
-    float worstPY_avg = 1e10
-    float bestPY_val = na
-    float worstPY_val = na
-    float curPY_avg = na
+        // --- PM Score ---
+        bestAvg2 = -1e10; worstAvg2 = 1e10; curAvg2 = na
+        for i = 0 to array.size(pmVals) - 1
+            cnt = array.get(pmCnts, i)
+            if cnt >= scoreConfidenceMin
+                avg = array.get(pmSums, i) / cnt
+                val = array.get(pmVals, i)
+                if avg > bestAvg2
+                    bestAvg2 := avg
+                if avg < worstAvg2
+                    worstAvg2 := avg
+                if val == thisPM
+                    curAvg2 := avg
+        if na(curAvg2) or bestAvg2 == worstAvg2
+            pmScore := 50
+        else
+            raw2 = (curAvg2 - worstAvg2) / (bestAvg2 - worstAvg2) * 100
+            curCnt2 = 0
+            for i = 0 to array.size(pmVals) - 1
+                if array.get(pmVals, i) == thisPM
+                    curCnt2 := array.get(pmCnts, i)
+            conf2 = math.min(curCnt2 / scoreConfidenceMin, 1.0)
+            pmScore := math.round(raw2 * conf2 + 50 * (1 - conf2))
 
-    for i = 0 to array.size(pyValues_seen) - 1
-        cnt = array.get(pyCounts, i)
-        if cnt >= scoreConfidenceMin
-            avg = array.get(pySumReturns, i) / cnt
-            val = array.get(pyValues_seen, i)
-            if avg > bestPY_avg
-                bestPY_avg := avg
-                bestPY_val := val
-            if avg < worstPY_avg
-                worstPY_avg := avg
-                worstPY_val := val
-            if val == currentPY_val
-                curPY_avg := avg
+        // Combined
+        combScore := na(pyScore) or na(pmScore) ? 50 : math.round(pyScore * 0.55 + pmScore * 0.45)
 
-    if na(curPY_avg) or bestPY_avg == worstPY_avg
-        pyScore_val := 50
+        // Label
+        recLabel := combScore >= 70 ? "STRONG BUY" : combScore >= 50 ? "BUY" : combScore >= 30 ? "NEUTRAL" : "AVOID"
+
+        // Summary
+        recSummary := ""
+        if combScore >= 50
+            pi = array.indexof(pyVals, thisPY)
+            if pi != -1 and array.get(pyCnts, pi) >= 2
+                avgR = array.get(pySums, pi) / array.get(pyCnts, pi)
+                recSummary := "PY " + str.tostring(thisPY, "#") + " avg " + str.tostring(avgR, "#.##") + "%"
+            pi2 = array.indexof(pmVals, thisPM)
+            if pi2 != -1 and array.get(pmCnts, pi2) >= 2
+                avgR2 = array.get(pmSums, pi2) / array.get(pmCnts, pi2)
+                if recSummary != ""
+                    recSummary := recSummary + " | "
+                recSummary := recSummary + "PM " + str.tostring(thisPM, "#") + " avg " + str.tostring(avgR2, "#.##") + "%"
+        if combScore < 50
+            recSummary := "Weak historical performance in current cycle"
     else
-        raw = (curPY_avg - worstPY_avg) / (bestPY_avg - worstPY_avg) * 100
-        // Confidence: find count for current PY
-        curPY_cnt = 0
-        for i = 0 to array.size(pyValues_seen) - 1
-            if array.get(pyValues_seen, i) == currentPY_val
-                curPY_cnt := array.get(pyCounts, i)
-                break
-        confidence = math.min(curPY_cnt / scoreConfidenceMin, 1.0)
-        pyScore_val := math.round(raw * confidence + 50 * (1 - confidence))
-
-    // --- PM scoring ---
-    float bestPM_avg = -1e10
-    float worstPM_avg = 1e10
-    float bestPM_val = na
-    float worstPM_val = na
-    float curPM_avg = na
-
-    for i = 0 to array.size(pmValues_seen) - 1
-        cnt = array.get(pmCounts, i)
-        if cnt >= scoreConfidenceMin
-            avg = array.get(pmSumReturns, i) / cnt
-            val = array.get(pmValues_seen, i)
-            if avg > bestPM_avg
-                bestPM_avg := avg
-                bestPM_val := val
-            if avg < worstPM_avg
-                worstPM_avg := avg
-                worstPM_val := val
-            if val == currentPM_val
-                curPM_avg := avg
-
-    if na(curPM_avg) or bestPM_avg == worstPM_avg
-        pmScore_val := 50
-    else
-        raw = (curPM_avg - worstPM_avg) / (bestPM_avg - worstPM_avg) * 100
-        curPM_cnt = 0
-        for i = 0 to array.size(pmValues_seen) - 1
-            if array.get(pmValues_seen, i) == currentPM_val
-                curPM_cnt := array.get(pmCounts, i)
-                break
-        confidence = math.min(curPM_cnt / scoreConfidenceMin, 1.0)
-        pmScore_val := math.round(raw * confidence + 50 * (1 - confidence))
-
-    // --- Combined score ---
-    if na(pyScore_val) or na(pmScore_val)
-        combinedScore_val := 50
-    else
-        combinedScore_val := math.round(pyScore_val * 0.55 + pmScore_val * 0.45)
-
-    // --- Recommendation label ---
-    if combinedScore_val >= 70
-        recLabel_val := "STRONG BUY"
-    else if combinedScore_val >= 50
-        recLabel_val := "BUY"
-    else if combinedScore_val >= 30
-        recLabel_val := "NEUTRAL"
-    else
-        recLabel_val := "AVOID"
-
-    // --- Summary ---
-    recSummary_val := ""
-    if combinedScore_val >= 50
-        pyIdx_best = array.indexof(pyValues_seen, currentPY_val)
-        if pyIdx_best != -1 and array.get(pyCounts, pyIdx_best) >= 2
-            avgR = array.get(pySumReturns, pyIdx_best) / array.get(pyCounts, pyIdx_best)
-            recSummary_val := recSummary_val + "PY " + str.tostring(currentPY_val, "#") + " avg " + str.tostring(avgR, "#.##") + "%"
-        pmIdx_best = array.indexof(pmValues_seen, currentPM_val)
-        if pmIdx_best != -1 and array.get(pmCounts, pmIdx_best) >= 2
-            avgR = array.get(pmSumReturns, pmIdx_best) / array.get(pmCounts, pmIdx_best)
-            if recSummary_val != ""
-                recSummary_val := recSummary_val + " · "
-            recSummary_val := recSummary_val + "PM " + str.tostring(currentPM_val, "#") + " avg " + str.tostring(avgR, "#.##") + "%"
-
-    if combinedScore_val < 50
-        recSummary_val := "Weak historical performance in current cycle"
-
-// Handle edge case: not enough data
-if barstate.islast and useHistoricalScoring and barCount < minLookbackBars
-    pyScore_val := 50
-    pmScore_val := 50
-    combinedScore_val := 50
-    recLabel_val := "NEUTRAL"
-    recSummary_val := "Insufficient history (" + str.tostring(barCount) + " bars, need " + str.tostring(minLookbackBars) + ")"
+        pyScore := 50; pmScore := 50; combScore := 50
+        recLabel := "NEUTRAL"
+        recSummary := "Insufficient history (" + str.tostring(barCnt) + " bars)"
 
 // ============================================
 // VISUALIZATION
 // ============================================
-
-lblSize = labelSize == "tiny" ? size.tiny : labelSize == "small" ? size.small : labelSize == "large" ? size.large : size.normal
-
-// Detect month/year change
+lblSz = labelSize == "tiny" ? size.tiny : labelSize == "small" ? size.small : labelSize == "large" ? size.large : size.normal
 isNewMonth = ta.change(month) != 0
 isNewYear = ta.change(year) != 0
 
-// --- Monthly PY/PM Labels ---
 if showMonthLabels and isNewMonth and not isNewYear
-    thisPY = calcPY(incDay, incMonth, month, year)
-    thisPM = calcPM(incDay, incMonth, month, year)
-    monthName = getMonthName(month)
-    pyPMText = "PY " + str.tostring(thisPY) + " | PM " + str.tostring(thisPM)
-    label.new(bar_index, high, pyPMText,
-         style=label.style_label_down,
-         color=pyColor,
-         textcolor=color.white,
-         size=lblSize,
-         tooltip="Personal Year: " + str.tostring(thisPY) + " | Personal Month: " + str.tostring(thisPM) + " | " + monthName + " " + str.tostring(year))
+    pyV = _calcPY(incDay, incMonth, month, year)
+    pmV = _calcPM(incDay, incMonth, month, year)
+    label.new(bar_index, high, "PY " + str.tostring(pyV) + " | PM " + str.tostring(pmV), style=label.style_label_down, color=pyColor, textcolor=color.white, size=lblSz)
 
-// --- Year Change Labels ---
 if showYearChangeLabels and isNewYear
-    thisPY = calcPY(incDay, incMonth, month, year)
-    thisPM = calcPM(incDay, incMonth, month, year)
-    monthName = getMonthName(month)
-    yearText = "━━ " + str.tostring(year) + " ━━"
-    pypmText = "PY " + str.tostring(thisPY) + " │ PM " + str.tostring(thisPM)
-    label.new(bar_index, high, yearText + "\n" + pypmText,
-         style=label.style_label_down,
-         color=yearColor,
-         textcolor=color.white,
-         size=lblSize,
-         tooltip="New Year: " + str.tostring(year) + "\nPY: " + str.tostring(thisPY) + " | PM: " + str.tostring(thisPM))
+    pyV = _calcPY(incDay, incMonth, month, year)
+    pmV = _calcPM(incDay, incMonth, month, year)
+    label.new(bar_index, high, "━━ " + str.tostring(year) + " ━━\nPY " + str.tostring(pyV) + " │ PM " + str.tostring(pmV), style=label.style_label_down, color=yearColor, textcolor=color.white, size=lblSz)
 
-// --- Separator Lines ---
 if showSeparatorLines and isNewMonth and not isNewYear
-    line.new(bar_index, low * 0.99, bar_index, high * 1.01,
-         color=monthLineColor,
-         style=line.style_dotted,
-         width=1)
+    line.new(bar_index, low * 0.99, bar_index, high * 1.01, color=monthLineColor, style=line.style_dotted, width=1)
 
 if showSeparatorLines and isNewYear
-    line.new(bar_index, low * 0.98, bar_index, high * 1.02,
-         color=yearLineColor,
-         style=line.style_solid,
-         width=2)
+    line.new(bar_index, low * 0.98, bar_index, high * 1.02, color=yearLineColor, style=line.style_solid, width=2)
 
 // ============================================
-// PATTERN SCORE LABELS ON CHART
+// SCORE & SIGNAL ON CHART
 // ============================================
+if barstate.islast and useHistoricalScoring and not na(combScore)
+    recCol = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
 
-if showPatternLabels and barstate.islast and useHistoricalScoring and not na(combinedScore_val)
-    // Determine display color
-    recColor = na
-    if recLabel_val == "STRONG BUY"
-        recColor := strongBuyColor
-    else if recLabel_val == "BUY"
-        recColor := buyColor
-    else if recLabel_val == "NEUTRAL"
-        recColor := neutralColor
-    else
-        recColor := avoidColor
+    if showPatternLabels
+        sText = "🔮 " + recLabel + "\nScore: " + str.tostring(combScore, "#") + "/100"
+        if recSummary != ""
+            sText := sText + "\n" + recSummary
+        label.new(bar_index, low, sText, style=label.style_label_up, color=recCol, textcolor=color.white, size=lblSz)
 
-    scoreText = "🔮 " + recLabel_val + "\nScore: " + str.tostring(combinedScore_val, "#") + "/100"
-    if recSummary_val != ""
-        scoreText := scoreText + "\n" + recSummary_val
-
-    // Score label near current price
-    label.new(bar_index, low,
-         scoreText,
-         style=label.style_label_up,
-         color=recColor,
-         textcolor=color.white,
-         size=lblSize,
-         tooltip="Numerology Pattern Score\nPY Score: " + str.tostring(pyScore_val, "#") + "/100\nPM Score: " + str.tostring(pmScore_val, "#") + "/100")
+    if showRecOnChart
+        if recLabel == "STRONG BUY" or recLabel == "BUY"
+            label.new(bar_index, low * 0.95, "▲", style=label.style_none, color=color.new(color.white, 100), textcolor=recLabel == "STRONG BUY" ? strongBuyColor : buyColor, size=size.large)
+        else if recLabel == "AVOID"
+            label.new(bar_index, high * 1.05, "▼", style=label.style_none, color=color.new(color.white, 100), textcolor=avoidColor, size=size.large)
 
 // ============================================
-// RECOMMENDATION SIGNAL ON CHART (label + shape)
+// INFO TABLE
 // ============================================
-
-if showRecOnChart and barstate.islast and useHistoricalScoring and not na(combinedScore_val)
-    // Arrow shape based on recommendation
-    if recLabel_val == "STRONG BUY" or recLabel_val == "BUY"
-        label.new(bar_index, low * 0.95, "▲",
-             style=label.style_none,
-             color=color.new(color.white, 100),
-             textcolor=recLabel_val == "STRONG BUY" ? strongBuyColor : buyColor,
-             size=size.large)
-    else if recLabel_val == "AVOID"
-        label.new(bar_index, high * 1.05, "▼",
-             style=label.style_none,
-             color=color.new(color.white, 100),
-             textcolor=avoidColor,
-             size=size.large)
-
-// ============================================
-// INFO TABLE (Right side panel)
-// ============================================
-
-var table infoTable = table.new(position.top_right, 2, 8, bgcolor=color.new(#1a1a2e, 20), border_width=1, border_color=color.new(color.white, 80))
+var table t = table.new(position.top_right, 2, 9, bgcolor=color.new(#1a1a2e, 20), border_width=1, border_color=color.new(color.white, 80))
 
 if barstate.islast
-    // Header
-    table.cell(infoTable, 0, 0, "📊 Numerology Pro v2", text_color=color.white, bgcolor=color.new(#16213e, 0), text_size=size.small, text_halign=text.align_left)
-    table.cell(infoTable, 1, 0, str.tostring(incDay) + "/" + str.tostring(incMonth) + "/" + str.tostring(incYear), text_color=color.gray, bgcolor=color.new(#16213e, 0), text_size=size.tiny)
+    table.cell(t, 0, 0, "📊 Numerology Pro v2", text_color=color.white, text_size=size.small)
+    table.cell(t, 1, 0, str.tostring(incDay) + "/" + str.tostring(incMonth) + "/" + str.tostring(incYear), text_color=color.gray, text_size=size.tiny)
+    table.cell(t, 0, 1, "Life Path", text_color=color.white, bgcolor=color.new(color.gray, 80), text_size=size.tiny)
+    table.cell(t, 1, 1, str.tostring(lifePath) + " · " + zodiac, text_color=color.white, bgcolor=color.new(color.gray, 80), text_size=size.tiny, text_halign=text.align_center)
+    table.cell(t, 0, 2, _getMonthName(month) + " " + str.tostring(year), text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.tiny)
+    table.cell(t, 1, 2, "", bgcolor=color.new(color.gray, 60))
+    table.cell(t, 0, 3, "PY", text_color=color.white, bgcolor=color.new(pyColor, 50), text_size=size.normal)
+    table.cell(t, 1, 3, str.tostring(curPY, "#"), text_color=color.white, bgcolor=pyColor, text_size=size.large, text_halign=text.align_center)
+    table.cell(t, 0, 4, "PM", text_color=color.white, bgcolor=color.new(pmColor, 50), text_size=size.normal)
+    table.cell(t, 1, 4, str.tostring(curPM, "#"), text_color=color.white, bgcolor=pmColor, text_size=size.large, text_halign=text.align_center)
 
-    // Life Path + Zodiac
-    table.cell(infoTable, 0, 1, "Life Path", text_color=color.white, bgcolor=color.new(color.gray, 80), text_size=size.tiny)
-    table.cell(infoTable, 1, 1, str.tostring(lifePath_val) + " · " + zodiac_val, text_color=color.white, bgcolor=color.new(color.gray, 80), text_size=size.tiny, text_halign=text.align_center)
-
-    // Current Month / Year
-    table.cell(infoTable, 0, 2, getMonthName(month) + " " + str.tostring(year), text_color=color.white, bgcolor=color.new(color.gray, 60), text_size=size.tiny)
-    table.cell(infoTable, 1, 2, "", bgcolor=color.new(color.gray, 60))
-
-    // PY
-    table.cell(infoTable, 0, 3, "PY", text_color=color.white, bgcolor=color.new(pyColor, 50), text_size=size.normal)
-    table.cell(infoTable, 1, 3, str.tostring(currentPY_val, "#"), text_color=color.white, bgcolor=pyColor, text_size=size.large, text_halign=text.align_center)
-
-    // PM
-    table.cell(infoTable, 0, 4, "PM", text_color=color.white, bgcolor=color.new(pmColor, 50), text_size=size.normal)
-    table.cell(infoTable, 1, 4, str.tostring(currentPM_val, "#"), text_color=color.white, bgcolor=pmColor, text_size=size.large, text_halign=text.align_center)
-
-    // Recommendation row (if scoring enabled)
-    if useHistoricalScoring and not na(combinedScore_val)
-        recColor2 = recLabel_val == "STRONG BUY" ? strongBuyColor : recLabel_val == "BUY" ? buyColor : recLabel_val == "NEUTRAL" ? neutralColor : avoidColor
-
-        table.cell(infoTable, 0, 5, "Score", text_color=color.white, bgcolor=color.new(recColor2, 50), text_size=size.normal)
-        table.cell(infoTable, 1, 5, str.tostring(combinedScore_val, "#") + "/100", text_color=color.white, bgcolor=recColor2, text_size=size.large, text_halign=text.align_center)
-
-        // Recommendation label (spans both columns)
-        table.cell(infoTable, 0, 6, "Recommendation", text_color=color.white, bgcolor=color.new(recColor2, 40), text_size=size.small)
-
-        recIcon = recLabel_val == "STRONG BUY" ? "🔥 " : recLabel_val == "BUY" ? "✅ " : recLabel_val == "NEUTRAL" ? "⚖️ " : "⚠️ "
-        table.cell(infoTable, 1, 6, recIcon + recLabel_val, text_color=color.white, bgcolor=recColor2, text_size=size.normal, text_halign=text.align_center)
-
-        // Summary
-        if recSummary_val != ""
-            table.cell(infoTable, 0, 7, "Detail", text_color=color.gray, bgcolor=color.new(#16213e, 0), text_size=size.tiny)
-            table.cell(infoTable, 1, 7, recSummary_val, text_color=color.gray, bgcolor=color.new(#16213e, 0), text_size=size.tiny)
-
-// ============================================
-// PLOTS (for Data Window and alerts)
-// ============================================
-
-plot(useHistoricalScoring and not na(pyScore_val) ? pyScore_val : na, "PY Score", color=color.new(pyColor, 60), display=useHistoricalScoring ? display.data_window : display.none)
-plot(useHistoricalScoring and not na(pmScore_val) ? pmScore_val : na, "PM Score", color=color.new(pmColor, 60), display=useHistoricalScoring ? display.data_window : display.none)
-plot(useHistoricalScoring and not na(combinedScore_val) ? combinedScore_val : na, "Combined Score", color=color.new(#ffd600, 60), display=useHistoricalScoring ? display.data_window : display.none)
-plot(currentPY_val, "Personal Year", color=color.new(pyColor, 100), display=display.data_window)
-plot(currentPM_val, "Personal Month", color=color.new(pmColor, 100), display=display.data_window)
+    if useHistoricalScoring and not na(combScore)
+        rc2 = recLabel == "STRONG BUY" ? strongBuyColor : recLabel == "BUY" ? buyColor : recLabel == "NEUTRAL" ? neutralColor : avoidColor
+        table.cell(t, 0, 5, "Score", text_color=color.white, bgcolor=color.new(rc2, 50), text_size=size.normal)
+        table.cell(t, 1, 5, str.tostring(combScore, "#") + "/100", text_color=color.white, bgcolor=rc2, text_size=size.large, text_halign=text.align_center)
+        rIcon = recLabel == "STRONG BUY" ? "🔥 " : recLabel == "BUY" ? "✅ " : recLabel == "NEUTRAL" ? "⚖️ " : "⚠️ "
+        table.cell(t, 0, 6, "Recommendation", text_color=color.white, bgcolor=color.new(rc2, 40), text_size=size.small)
+        table.cell(t, 1, 6, rIcon + recLabel, text_color=color.white, bgcolor=rc2, text_size=size.normal, text_halign=text.align_center)
+        if recSummary != ""
+            table.cell(t, 0, 7, "Detail", text_color=color.gray, text_size=size.tiny)
+            table.cell(t, 1, 7, recSummary, text_color=color.gray, text_size=size.tiny)
+        bpy = 0; bpyR = -1e10
+        for i = 0 to array.size(pyVals) - 1
+            if array.get(pyCnts, i) >= scoreConfidenceMin
+                avgR = array.get(pySums, i) / array.get(pyCnts, i)
+                if avgR > bpyR
+                    bpyR := avgR; bpy := array.get(pyVals, i)
+        bpm = 0; bpmR = -1e10
+        for i = 0 to array.size(pmVals) - 1
+            if array.get(pmCnts, i) >= scoreConfidenceMin
+                avgR = array.get(pmSums, i) / array.get(pmCnts, i)
+                if avgR > bpmR
+                    bpmR := avgR; bpm := array.get(pmVals, i)
+        if bpyR > -1e9 and bpmR > -1e9
+            table.cell(t, 0, 8, "Best PY/PM", text_color=color.gray, text_size=size.tiny)
+            table.cell(t, 1, 8, "PY " + str.tostring(bpy, "#") + " (+" + str.tostring(bpyR, "#.##") + "%) · PM " + str.tostring(bpm, "#") + " (+" + str.tostring(bpmR, "#.##") + "%)", text_color=color.gray, text_size=size.tiny)
 
 // ============================================
-// ALERTS
+// PLOTS & ALERTS
 // ============================================
+plot(useHistoricalScoring and not na(pyScore) ? pyScore : na, "PY Score", color=color.new(pyColor, 60), display=useHistoricalScoring ? display.data_window : display.none)
+plot(useHistoricalScoring and not na(pmScore) ? pmScore : na, "PM Score", color=color.new(pmColor, 60), display=useHistoricalScoring ? display.data_window : display.none)
+plot(useHistoricalScoring and not na(combScore) ? combScore : na, "Combined Score", color=color.new(#ffd600, 60), display=useHistoricalScoring ? display.data_window : display.none)
+plot(curPY, "Personal Year", color=color.new(pyColor, 100), display=display.data_window)
+plot(curPM, "Personal Month", color=color.new(pmColor, 100), display=display.data_window)
 
 alertcondition(isNewMonth, title="New Month", message="Month changed - PY: {{plot_4}}, PM: {{plot_5}}")
 alertcondition(isNewYear, title="New Year", message="Year changed - PY: {{plot_4}}, PM: {{plot_5}}")
-
-// Scoring-based alerts (only fire at last bar)
-alertcondition(barstate.islast and useHistoricalScoring and not na(combinedScore_val) and combinedScore_val >= 70,
-     title="STRONG BUY Signal",
-     message="🔥 STRONG BUY - " + syminfo.ticker + " - Score: {{plot_2}}/100 - PY: {{plot_4}}, PM: {{plot_5}} - " + recSummary_val)
-
-alertcondition(barstate.islast and useHistoricalScoring and not na(combinedScore_val) and combinedScore_val >= 50 and combinedScore_val < 70,
-     title="BUY Signal",
-     message="✅ BUY - " + syminfo.ticker + " - Score: {{plot_2}}/100 - PY: {{plot_4}}, PM: {{plot_5}}")
-
-alertcondition(barstate.islast and useHistoricalScoring and not na(combinedScore_val) and combinedScore_val < 30,
-     title="AVOID Signal",
-     message="⚠️ AVOID - " + syminfo.ticker + " - Score: {{plot_2}}/100 - PY: {{plot_4}}, PM: {{plot_5}}")
+alertcondition(barstate.islast and useHistoricalScoring and not na(combScore) and combScore >= 70, title="STRONG BUY Signal", message="🔥 STRONG BUY - {{ticker}} - Score: {{plot_2}}/100 - PY: {{plot_4}}, PM: {{plot_5}}")
+alertcondition(barstate.islast and useHistoricalScoring and not na(combScore) and combScore >= 50 and combScore < 70, title="BUY Signal", message="✅ BUY - {{ticker}} - Score: {{plot_2}}/100")
+alertcondition(barstate.islast and useHistoricalScoring and not na(combScore) and combScore < 30, title="AVOID Signal", message="⚠️ AVOID - {{ticker}} - Score: {{plot_2}}/100")
